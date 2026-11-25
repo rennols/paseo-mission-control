@@ -1,8 +1,9 @@
 /**
- * Pushes Queue and Review inbox snapshots, and their counts, to open screens. Changes are
+ * Pushes Queue and Review inbox snapshots, their counts and the overnight report to open screens. Changes are
  * coalesced (at most one push per 250 ms). The client never polls.
  */
 import type { InboxSnapshot, QueueSnapshot } from "../../shared/queue";
+import type { OvernightReport } from "../../shared/report";
 import type { Inbox } from "../inbox/inbox";
 import type { PluginLogger } from "../log";
 import type { TaskQueue } from "./queue";
@@ -17,12 +18,21 @@ export interface WorkFeed {
   addQueue(push: Push<QueueSnapshot>): () => void;
   addInbox(push: Push<InboxSnapshot>): () => void;
   addCounts(push: Push<Counts>): () => void;
+  addReport(push: Push<OvernightReport>): () => void;
   changed(): void;
   stop(): void;
 }
 
-export function createWorkFeed(queue: TaskQueue, inbox: Inbox, hostLabel: () => string, log: PluginLogger): WorkFeed {
+export function createWorkFeed(
+  queue: TaskQueue,
+  inbox: Inbox,
+  hostLabel: () => string,
+  log: PluginLogger,
+  report: () => OvernightReport,
+): WorkFeed {
   const queues = new Set<Push<QueueSnapshot>>();
+  const reports = new Set<Push<OvernightReport>>();
+  let lastReport = "";
   const inboxes = new Set<Push<InboxSnapshot>>();
   const counts = new Set<Push<Counts>>();
   let pending: NodeJS.Timeout | null = null;
@@ -43,6 +53,13 @@ export function createWorkFeed(queue: TaskQueue, inbox: Inbox, hostLabel: () => 
     try {
       if (queues.size > 0) send(queues, queue.snapshot(hostLabel()));
       if (inboxes.size > 0) send(inboxes, inbox.snapshot(hostLabel()));
+      if (reports.size > 0) {
+        // Only when something in it changed (generatedAt aside): needs and registry changes are frequent.
+        const next = report();
+        const key = JSON.stringify({ ...next, generatedAt: 0 });
+        if (key !== lastReport) send(reports, next);
+        lastReport = key;
+      }
       const next = currentCounts();
       const key = `${next.queued}:${next.review}`;
       if (counts.size > 0 && key !== lastCounts) send(counts, next);
@@ -74,6 +91,7 @@ export function createWorkFeed(queue: TaskQueue, inbox: Inbox, hostLabel: () => 
     addQueue: (push) => add(queues, push, () => queue.snapshot(hostLabel())),
     addInbox: (push) => add(inboxes, push, () => inbox.snapshot(hostLabel())),
     addCounts: (push) => add(counts, push, currentCounts),
+    addReport: (push) => add(reports, push, report),
     changed,
     stop() {
       offQueue();
@@ -82,6 +100,7 @@ export function createWorkFeed(queue: TaskQueue, inbox: Inbox, hostLabel: () => 
       queues.clear();
       inboxes.clear();
       counts.clear();
+      reports.clear();
     },
   };
 }

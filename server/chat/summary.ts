@@ -60,6 +60,8 @@ export function createSummaryService(
   settings: () => ChatSettings,
   stateDirectory: string,
   log: PluginLogger,
+  /** Called after a summary is stored (the overnight report reads them). */
+  onSaved: () => void = () => undefined,
 ): SummaryService {
   const starts = new Map<string, TurnStart>();
   const scratch = path.join(stateDirectory, "snapshots");
@@ -81,6 +83,7 @@ export function createSummaryService(
     list.push(summary);
     store.state.summaries = list.slice(-KEPT_SUMMARIES);
     store.changed();
+    onSaved();
   }
 
   async function summarise(
@@ -132,8 +135,10 @@ export function createSummaryService(
       question: summary.question,
       card: deservesCard(summary),
     });
+    // Turns with no changes and no checks are stored too (no card), so the overnight report can
+    // say "No file changes" from git instead of guessing.
+    if (summary.filesTracked || deservesCard(summary)) remember(summary);
     if (!deservesCard(summary)) return;
-    remember(summary);
     await paseo.agents.ref(agentId).timeline.append({
       type: "plugin",
       id: rowId(turnId),

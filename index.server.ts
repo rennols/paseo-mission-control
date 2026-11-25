@@ -1,6 +1,7 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { DEFAULT_CHAT_SETTINGS, chatSettings, chatSettingsWatch, type ChatSettings } from "./shared/chat";
 import { dismissNeed, extendTime, liveWatch, needsCountWatch, respondPermission, rowBadgesWatch, sendHint } from "./shared/live";
+import { overnightReportWatch } from "./shared/report";
 import { addTask, commitAndOpenPr, inboxWatch, moveTaskUp, queueWatch, removeTask, retryTask, sendBack, startTaskNow, workCountWatch } from "./shared/queue";
 import {
   DEFAULT_QUEUE_SETTINGS,
@@ -20,6 +21,7 @@ import { createNeedsActions } from "./server/needs/actions";
 import { createNeedsStore } from "./server/needs/needs";
 import { createPaseoAdapter } from "./server/paseo/adapter";
 import { createCatalog } from "./server/queue/catalog";
+import { buildReport } from "./server/report/model";
 import { createTaskQueue } from "./server/queue/queue";
 import { createWorkFeed } from "./server/queue/work-feed";
 import { resolveStateDirectory } from "./server/paths";
@@ -90,7 +92,7 @@ export default function contribute(server: PluginServerContext) {
     log.info("settings", "Chat settings changed", { summaryCard: chat.summaryCard, quickReplies: chat.quickReplies, replies: chat.replies.length, savedPrompts: chat.savedPrompts, prompts: chat.prompts.length });
     for (const listener of chatListeners) listener(chat);
   });
-  const summaries = createSummaryService(paseo, store, () => chat, resolveStateDirectory(), log);
+  const summaries = createSummaryService(paseo, store, () => chat, resolveStateDirectory(), log, () => work.changed());
 
   const watchdog = createWatchdog(paseo, registry, needs, store, () => settings, log);
   const actions = createNeedsActions(
@@ -104,8 +106,20 @@ export default function contribute(server: PluginServerContext) {
   const catalog = createCatalog();
   const queue = createTaskQueue(paseo, registry, store, catalog, () => queueLimits, log);
   const inbox = createInbox(paseo, registry, store, { taskForAgent: (agentId) => queue.taskForAgent(agentId) }, log);
-  const work = createWorkFeed(queue, inbox, () => hosts.self().label, log);
+  const report = () =>
+    buildReport({
+      now: Date.now(),
+      hostLabel: hosts.self().label,
+      start: queueLimits.overnightStart,
+      end: queueLimits.overnightEnd,
+      tasks: store.state.queue,
+      inbox: store.state.inbox,
+      needs: needs.list().filter((item) => item.resolvedAt === null),
+      summaries: store.state.summaries,
+    });
+  const work = createWorkFeed(queue, inbox, () => hosts.self().label, log, report);
   const offRegistryWork = registry.onChange(() => work.changed());
+  const offNeedsWork = needs.onChange(() => work.changed());
 
   // The SDK arrives with the first hook, RPC or subscription (Paseo 0.17.4 doesn't give it to the
   // entry function). Everything that needs it starts then.
@@ -181,6 +195,11 @@ export default function contribute(server: PluginServerContext) {
     const remove = work.addCounts(push);
     signal.addEventListener("abort", remove, { once: true });
   });
+  paseo.handle(overnightReportWatch, (_input, { paseo: api, push, signal }) => {
+    paseo.capture(api);
+    const remove = work.addReport(push);
+    signal.addEventListener("abort", remove, { once: true });
+  });
   paseo.handle(addTask, async (input, { paseo: api }) => {
     paseo.capture(api);
     return queue.add(api, input);
@@ -215,6 +234,7 @@ export default function contribute(server: PluginServerContext) {
     inbox.stop();
     work.stop();
     offRegistryWork();
+    offNeedsWork();
     stopQueueSettings();
     watchdog.stop();
     summaries.stop();

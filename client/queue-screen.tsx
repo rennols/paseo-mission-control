@@ -1,5 +1,6 @@
 /**
- * Mission Control, Queue tab: slot capacity on this host, the Add task form and the task list.
+ * Mission Control, Queue tab: the overnight report, slot capacity on this host, the Add task form
+ * and the task list.
  * Renders what the server pushes on `queue.watch`; every action is one RPC from a click.
  * The queue is per host: it shows and starts tasks on the host this screen is open on.
  */
@@ -22,6 +23,7 @@ import {
   type QueueTask,
   type TaskState,
 } from "../shared/queue";
+import { OvernightReportCard } from "./overnight-report";
 import { Button, Pill, formatElapsed, statusColor } from "./parts";
 
 function stateColor(theme: PluginTheme, state: TaskState): string {
@@ -280,7 +282,7 @@ function TaskRow({
   );
 }
 
-export function QueueScreen({ theme, layout, navigation, host }: PluginScreenProps) {
+export function QueueScreen({ theme, layout, navigation, host, onOpenInbox }: PluginScreenProps & { onOpenInbox?: () => void }) {
   const [snapshot, setSnapshot] = useState<QueueSnapshot | null>(null);
   const [adding, setAdding] = useState(false);
   const subscription = useSubscription(queueWatch, {}, setSnapshot);
@@ -333,6 +335,7 @@ export function QueueScreen({ theme, layout, navigation, host }: PluginScreenPro
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: pad, gap: 16 }}>
+      <OvernightReportCard theme={theme} onOpenChat={openChat} onOpenInbox={onOpenInbox ?? null} />
       <View style={styles.card} accessible accessibilityLabel={`${busySlots} of ${snapshot.slotLimit} slots busy on ${snapshot.hostLabel}, ${free} free`}>
         <Text style={styles.title}>
           Slots on {snapshot.hostLabel}: {busySlots} of {snapshot.slotLimit} busy
