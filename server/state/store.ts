@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { TurnSummarySchema } from "../../shared/chat";
 import { NeedsItemSchema } from "../../shared/live";
 import { InboxItemSchema, QueueTaskSchema } from "../../shared/queue";
 import type { PluginLogger } from "../log";
@@ -26,6 +27,8 @@ export const StateSchema = z.object({
   queue: z.array(QueueTaskSchema).default([]),
   /** Review inbox items (P1). */
   inbox: z.array(InboxItemSchema).default([]),
+  /** Recent turn summaries, newest last (PRD data model: copy in state file). Feeds the review inbox later. */
+  summaries: z.array(TurnSummarySchema).default([]),
   /** Local counters for the success metrics (PRD: Success metrics). */
   metrics: z
     .object({

@@ -160,7 +160,7 @@ export const InboxItemSchema = z.object({
   taskId: z.string().nullable(),
   /** The agent's final message for its last turn, trimmed. */
   summary: z.string().nullable(),
-  /** Failed checks the agent ran in its last turn, e.g. "npm test: adds numbers". Empty until the turn summary card lands. */
+  /** Failed checks the agent ran in its last turn, e.g. "npm test: adds numbers". From its latest turn summary card. */
   failedChecks: z.array(z.string()),
   files: z.array(ChangedFileSchema),
   linesAdded: z.number(),

@@ -2,7 +2,13 @@
 
 A Paseo plugin for supervising many coding agents in parallel across hosts. Plugin id `mission-control`.
 
-Status: P0 in progress. Built: Live tab, Needs you, watchdog, sidebar footer entry, settings screen.
+Status: P0 in progress. Built: Live tab, Needs you, watchdog, sidebar footer entry, settings screen,
+turn summary card and quick reply pills.
+
+Compact explore rows are not built as a plugin feature: Paseo 0.17.4 already folds runs of tool calls
+into one expandable row (Settings → Chat → Chat display: "Collapse tool calls" or "Collapse turns").
+A plugin timeline transformer sees one call at a time, so it could not fold a run, and replacing calls
+with plugin rows would break Paseo's own folding.
 
 ## Layout
 
@@ -17,8 +23,10 @@ Status: P0 in progress. Built: Live tab, Needs you, watchdog, sidebar footer ent
 | `server/live/` | Daemon subprocess | Agent registry, lanes, host directories, the snapshot feed. |
 | `server/queue/` | Daemon subprocess | Task queue, slot rules, dispatcher, unattended stop, Add task catalog. |
 | `server/inbox/` | Daemon subprocess | Review inbox: read-only git review, commit/push/`gh pr create` on click. |
+| `server/chat/` | Daemon subprocess | Turn summaries: git snapshots per turn, checks read from the agent's own commands. |
 | `server/state/store.ts` | Daemon subprocess | `$PASEO_HOME/mission-control/state.json`, temp file then rename. |
 | `test/` | Node (vitest) | Unit tests for the pure parts. Not shipped. |
+| `scripts/verify-summaries.mjs` | Your shell | Phase gate 2: runs 20 real turns in a scratch repo and compares each summary with git. Not shipped. |
 | `index.client.tsx`, `client/` | Paseo app | Renders and calls RPCs only. |
 | `shared/` | Both | `defineRpc` / `defineSubscription` contracts and plain values. |
 
@@ -34,3 +42,22 @@ paseo plugin logs mission-control
 ```
 
 Built against Paseo 0.17.4 (`requirements.paseo` is `>=0.17.4 <0.18.0`). Check each new Paseo release before widening the range.
+
+## Chat features
+
+**Turn summary card.** On `agent.turn.before` the server snapshots the agent's worktree with
+`git add -A` into a temporary index and `git write-tree`; on `agent.turn.after` it snapshots again and
+lists `git diff --numstat` between the two trees. So the list is exactly what changed in the turn,
+including untracked files and commits the agent made, and excluding files `.gitignore` leaves out.
+The repo's own index and branches are never changed. `git add` does write loose objects into
+`.git/objects`; nothing references them and `git gc` removes them later. Checks are the agent's own
+shell calls that start with a pattern from Settings → Chat; the plugin never runs one.
+
+Known limits on Paseo 0.17.4: cards appended with `timeline.append` are dropped when the daemon
+restarts (re-appending would put them at the end and stretch Paseo's "Worked for" time, so they are
+not restored; the copy stays in `state.json`). Timeline renderers cannot open Paseo's Changes panel,
+so the card has no View changes button. Quick replies are per host, not per device, because the client
+entry cannot read device settings.
+
+**Quick reply pills.** One pill per reply above every agent's composer. A pill inserts its text and
+focuses the composer; it never sends. Edit the list in Settings → Plugins → Mission Control → Chat.

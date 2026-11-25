@@ -173,6 +173,12 @@ export function createInbox(
     }),
   ];
 
+  /** Failed checks from the agent's latest turn summary (written by the summary card, server/chat). */
+  function failedChecks(agentId: string): string[] {
+    const latest = [...(store.state.summaries ?? [])].reverse().find((summary) => summary.agentId === agentId);
+    return (latest?.checks ?? []).filter((check) => !check.passed).map((check) => (check.line ? `${check.command}: ${check.line}` : check.command));
+  }
+
   function prune(): void {
     const at = now();
     const kept = items().filter((item) => item.resolvedAt === null || at - item.resolvedAt < KEEP_RESOLVED_MS);
@@ -185,7 +191,10 @@ export function createInbox(
   return {
     snapshot(hostLabel) {
       prune();
-      const open = items().filter((item) => item.state === "open").sort((a, b) => a.finishedAt - b.finishedAt);
+      const open = items()
+        .filter((item) => item.state === "open")
+        .sort((a, b) => a.finishedAt - b.finishedAt)
+        .map((item) => ({ ...item, failedChecks: failedChecks(item.agentId) }));
       const resolved = items().filter((item) => item.state !== "open").sort((a, b) => (b.resolvedAt ?? 0) - (a.resolvedAt ?? 0));
       return { generatedAt: now(), hostLabel, items: [...open, ...resolved] };
     },
