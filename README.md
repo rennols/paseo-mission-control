@@ -15,6 +15,8 @@ Status: P0 in progress. Built: Live tab, Needs you, watchdog, sidebar footer ent
 | `server/watchdog/` | Daemon subprocess | Turn analysis, counting rules, read-only git check, hook wiring. |
 | `server/needs/` | Daemon subprocess | Needs you items and the card actions (RPC handlers). |
 | `server/live/` | Daemon subprocess | Agent registry, lanes, host directories, the snapshot feed. |
+| `server/queue/` | Daemon subprocess | Task queue, slot rules, dispatcher, unattended stop, Add task catalog. |
+| `server/inbox/` | Daemon subprocess | Review inbox: read-only git review, commit/push/`gh pr create` on click. |
 | `server/state/store.ts` | Daemon subprocess | `$PASEO_HOME/mission-control/state.json`, temp file then rename. |
 | `test/` | Node (vitest) | Unit tests for the pure parts. Not shipped. |
 | `index.client.tsx`, `client/` | Paseo app | Renders and calls RPCs only. |
