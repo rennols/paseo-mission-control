@@ -100,12 +100,15 @@ export const chatSettings = defineSettings({
     savedPrompts: z.boolean().default(true),
     prompts: z.array(SavedPromptSchema).max(MAX_SAVED_PROMPTS).default(DEFAULT_SAVED_PROMPTS),
     checkPatterns: z.array(z.string().trim().min(1).max(80)).max(50).default(DEFAULT_CHECK_PATTERNS),
+    /** Test and edit cards. Added after version 1 shipped; old documents read the defaults. */
+    testCards: z.boolean().default(true),
+    editCards: z.boolean().default(true),
   }),
 });
 export type ChatSettings = z.output<typeof chatSettings.schema>;
 export const DEFAULT_CHAT_SETTINGS: ChatSettings = chatSettings.schema.parse({});
 
-/** Streams the chat settings to the client entry, which registers the pills and `/p`. */
+/** Streams the chat settings to the client entry, which registers the pills, `/p` and the test and edit cards. */
 export const chatSettingsWatch = defineSubscription({
   name: "chat.settings.watch",
   input: z.object({}),
@@ -115,6 +118,9 @@ export const chatSettingsWatch = defineSubscription({
     // Optional so an app still running the previous client bundle keeps parsing events.
     savedPrompts: z.boolean().default(true),
     prompts: z.array(SavedPromptSchema).default(DEFAULT_SAVED_PROMPTS),
+    testCards: z.boolean().default(true),
+    editCards: z.boolean().default(true),
+    checkPatterns: z.array(z.string()).default(DEFAULT_CHECK_PATTERNS),
   }),
 });
 

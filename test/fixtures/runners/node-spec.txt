@@ -1,0 +1,30 @@
+✔ adds (0.916516ms)
+✖ subtracts (0.885098ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 63.759791
+
+✖ failing tests:
+
+test at nt/a.test.mjs:3:1
+✖ subtracts (0.885098ms)
+  AssertionError [ERR_ASSERTION]: 2 == 1
+      at TestContext.<anonymous> (file:///work/nt/a.test.mjs:3:32)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1047:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+      at Test.postRun (node:internal/test_runner/test:1173:19)
+      at Test.run (node:internal/test_runner/test:1101:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 1,
+    operator: '==',
+    diff: 'simple'
+  }

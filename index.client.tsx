@@ -7,6 +7,7 @@ import { startRowBadges } from "./client/row-badges";
 import { SettingsScreen } from "./client/settings-screen";
 import { LIVE_SCREEN_ID, MissionControlItem } from "./client/sidebar-item";
 import { SummaryCard } from "./client/summary-card";
+import { startToolCards } from "./client/tool-cards";
 import { SUMMARY_KIND, SUMMARY_VERSION, TurnSummarySchema } from "./shared/chat";
 import { PLUGIN_NAME } from "./shared/plugin";
 
@@ -21,6 +22,7 @@ export default function contribute(client: PluginClientContext) {
     client.addTimelineRenderer({ kind: SUMMARY_KIND, version: SUMMARY_VERSION, schema: TurnSummarySchema, Component: SummaryCard }),
     startComposerPills(client),
     startRowBadges(client),
+    startToolCards(client),
   ];
   return () => {
     for (const remove of removers) remove();
