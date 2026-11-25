@@ -84,3 +84,50 @@ export function failureInOutput(output: string): string | null {
   return null;
 }
 
+
+/** Flags that change only how a runner prints, not which tests it runs. */
+const OUTPUT_FLAG = /^(?:--reporter(?:=\S+)?|--silent|--color|--colors|--no-color|--no-colors|--verbose|--quiet|-q|-s)$/;
+/** Flags that take the next word as their value. */
+const OUTPUT_FLAG_WITH_VALUE = /^--reporter$/;
+
+/**
+ * What a check run is, for telling reruns apart: the command without redirects, output-only flags
+ * or extra spaces, with `npm run test` read as `npm test`. "npm test 2>&1 > out.txt" and
+ * "npm run test -- --reporter=dot" are both "npm test".
+ */
+export function checkKey(command: string): string {
+  const words = command
+    .replace(/\s*(?:\d|&)?>>?\s*(?:&\d|\S+)/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const kept: string[] = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index] as string;
+    if (OUTPUT_FLAG.test(word)) {
+      if (OUTPUT_FLAG_WITH_VALUE.test(word) && index + 1 < words.length && !(words[index + 1] as string).startsWith("-")) index += 1;
+      continue;
+    }
+    kept.push(word);
+  }
+  if (kept[0] === "npm" && kept[1] === "run" && kept[2] === "test") kept.splice(1, 1);
+  if (kept[kept.length - 1] === "--") kept.pop();
+  return kept.join(" ");
+}
+
+/**
+ * True when a run of `later` covers a run of `earlier`: the same check, or the same command with
+ * only file or test-name targets dropped, so "npm test" covers "npm test -- test/a.test.ts" and
+ * "pytest" covers "pytest tests/test_a.py". Never the other way round, and never when `earlier`
+ * adds a flag ("tsc" doesn't cover "tsc -p other.json"). Bare `go test` runs only the current
+ * package, so it covers nothing but itself.
+ */
+export function covers(later: string, earlier: string): boolean {
+  const a = checkKey(later);
+  const b = checkKey(earlier);
+  if (a === b) return true;
+  if (!b.startsWith(`${a} `)) return false;
+  if (/^go\s/.test(a)) return false;
+  const extra = b.slice(a.length + 1).split(/\s+/);
+  return extra.every((word) => word === "--" || !word.startsWith("-"));
+}

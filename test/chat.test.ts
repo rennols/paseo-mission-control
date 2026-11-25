@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { DEFAULT_CHECK_PATTERNS } from "../shared/chat";
-import { checkSegment, collectChecks, matchesCheck, passLine } from "../server/chat/checks";
+import { checkKey, checkSegment, collectChecks, covers, matchesCheck, passLine } from "../server/chat/checks";
 import { diffSnapshots, parseNameStatus, parseNumstat, takeSnapshot } from "../server/chat/snapshot";
 import { deservesCard } from "../server/chat/summary";
 import { formatReplies, headline, parsePatterns, parseReplies, replyStarter } from "../client/chat-format";
@@ -57,6 +57,52 @@ describe("collectChecks", () => {
       { command: "npx tsc --noEmit", passed: true, line: null },
       { command: "npm test", passed: true, line: "Tests 12 passed (12)" },
     ]);
+  });
+  it("a later pass of the same check replaces an earlier fail, however the agent wrote it", () => {
+    const failed = (command: string) => shell(command, "completed", { exitCode: 1, output: "not ok 1 - add\n# fail 1" });
+    const passed = (command: string) => shell(command, "completed", { exitCode: 0, output: "# pass 2\n# fail 0" });
+    const runs: Array<[string, string]> = [
+      ["npm test", "npm test 2>&1 | tail -20"],
+      ["npm test > /tmp/out.txt 2>&1; cat /tmp/out.txt", "npm test"],
+      ["npm run test", "npm test"],
+      ["npm test", "npm test -- --reporter=dot"],
+      ["npx vitest run --reporter verbose", "npx vitest run"],
+      ["npm test -- test/a.test.js", "npm test"],
+      ["pytest tests/test_a.py::test_add", "pytest"],
+    ];
+    for (const [first, second] of runs) {
+      const checks = collectChecks([failed(first), passed(second)], DEFAULT_CHECK_PATTERNS);
+      expect(checks, `${first} then ${second}`).toHaveLength(1);
+      expect(checks[0]?.passed, `${first} then ${second}`).toBe(true);
+    }
+  });
+  it("a later fail replaces an earlier pass, and the turn ends Failed", () => {
+    const checks = collectChecks(
+      [shell("npm test", "completed", { output: "# pass 2\n# fail 0" }), shell("npm test 2>&1 | tail", "completed", { output: "# fail 1" })],
+      DEFAULT_CHECK_PATTERNS,
+    );
+    expect(checks).toEqual([{ command: "npm test", passed: false, line: "# fail 1" }]);
+  });
+  it("a narrower or different run doesn't hide a failure", () => {
+    const fail = shell("npm test", "completed", { exitCode: 1, output: "# fail 1" });
+    const narrowPass = shell("npm test -- test/a.test.js", "completed", { output: "# pass 1\n# fail 0" });
+    expect(collectChecks([fail, narrowPass], DEFAULT_CHECK_PATTERNS).map((check) => [check.command, check.passed])).toEqual([
+      ["npm test", false],
+      ["npm test -- test/a.test.js", true],
+    ]);
+    const lint = shell("npm run lint", "completed", { output: "" });
+    expect(collectChecks([fail, lint], DEFAULT_CHECK_PATTERNS).map((check) => check.passed)).toEqual([false, true]);
+  });
+  it("tells reruns of one check apart from other checks", () => {
+    expect(checkKey("npm test 2>&1 > out.txt")).toBe("npm test");
+    expect(checkKey("npm run test -- --reporter=dot")).toBe("npm test");
+    expect(checkKey("npx vitest run --reporter verbose a.test.ts")).toBe("npx vitest run a.test.ts");
+    expect(covers("npm test", "npm test -- test/a.test.js")).toBe(true);
+    expect(covers("npm test -- test/a.test.js", "npm test")).toBe(false);
+    expect(covers("tsc", "tsc -p tsconfig.build.json")).toBe(false);
+    expect(covers("go test", "go test ./pkg")).toBe(false);
+    expect(covers("go test ./...", "go test ./... -run TestAdd")).toBe(false);
+    expect(covers("npm test", "npm run lint")).toBe(false);
   });
   it("treats a non-zero exit code as failed", () => {
     const checks = collectChecks([shell("pytest", "completed", { exitCode: 1, output: "E   assert 1 == 2\n1 failed" })], DEFAULT_CHECK_PATTERNS);
