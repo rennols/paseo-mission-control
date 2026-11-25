@@ -246,6 +246,13 @@ export function LiveScreen({ theme, layout, navigation, host }: PluginScreenProp
             <Pill key={status} theme={theme} label={`${STATUS_LABEL[status]} ${counts.get(status) ?? 0}`} color={statusColor(theme, status)} />
           ))}
         </View>
+        {snapshot.hosts
+          .filter((item) => item.error)
+          .map((item) => (
+            <Text key={`error-${item.serverId}`} style={{ color: theme.colors.statusDanger, fontSize: 12 }}>
+              {item.label}: {item.error}
+            </Text>
+          ))}
         {snapshot.hosts.length > 1 ? (
           <View style={styles.chips} accessibilityRole="radiogroup" accessibilityLabel="Host filter">
             {[{ serverId: null as string | null, label: "All hosts", status: "online" }, ...snapshot.hosts].map((option) => {

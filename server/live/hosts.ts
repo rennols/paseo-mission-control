@@ -13,6 +13,8 @@ import { observeDirectory, type DirectoryObservation } from "./directory";
 import { LOCAL, type Registry } from "./registry";
 const FEATURE = "hosts";
 const HOSTS_REFRESH_MS = 60_000;
+/** Waits before re-reading this host's agents after a failure: 2 s, 5 s, 15 s, then every 60 s. */
+const LOCAL_RETRY_MS = [2_000, 5_000, 15_000, 60_000];
 
 interface Remote {
   api: PaseoApi;
@@ -24,6 +26,10 @@ export interface HostsService {
   start(paseo: PaseoApi): void;
   /** Called when the Live tab first opens: other hosts are only read while someone looks. */
   includeRemote(): void;
+  /** True once this host's agents have been read at least once. */
+  localReady(): boolean;
+  /** Calls back once this host's agents have been read (at once if they already have). */
+  whenLocalReady(listener: () => void): () => void;
   self(): { serverId: string; label: string };
   summaries(): LiveHost[];
   /** Registry key → label, for rows. */
@@ -38,6 +44,11 @@ export function createHostsService(registry: Registry, log: PluginLogger, onChan
   let self = { serverId: LOCAL, label: "This host" };
   let hosts: LiveHost[] = [];
   let local: DirectoryObservation | null = null;
+  let localLoaded = false;
+  let localError: string | null = null;
+  let localAttempts = 0;
+  let localRetry: NodeJS.Timeout | null = null;
+  const readyListeners = new Set<() => void>();
   let remoteWanted = false;
   const remotes = new Map<string, Remote>();
   const connecting = new Set<string>();
@@ -104,16 +115,59 @@ export function createHostsService(registry: Registry, log: PluginLogger, onChan
     }
   }
 
+  function retryLocal(): void {
+    if (stopped || localRetry) return;
+    const delay = LOCAL_RETRY_MS[Math.min(localAttempts, LOCAL_RETRY_MS.length - 1)] ?? 60_000;
+    localAttempts += 1;
+    localRetry = setTimeout(() => {
+      localRetry = null;
+      void observeLocal();
+    }, delay);
+    localRetry.unref?.();
+  }
+
+  /**
+   * Reads this host's agents and keeps reading them. A failed read, or a subscription that
+   * errors later, is retried; until the first read succeeds the Live tab says it is loading, and
+   * after a failure the host shows the error instead of an empty list.
+   */
+  async function observeLocal(): Promise<void> {
+    if (!paseo || stopped) return;
+    const previous = local;
+    local = null;
+    await previous?.release().catch(() => undefined);
+    try {
+      const observation = await observeDirectory(paseo, LOCAL, registry, log, FEATURE, (error) => {
+        localError = error instanceof Error ? error.message : String(error);
+        onChange();
+        retryLocal();
+      });
+      if (stopped) {
+        await observation.release();
+        return;
+      }
+      local = observation;
+      localAttempts = 0;
+      localError = null;
+      if (!localLoaded) {
+        localLoaded = true;
+        for (const listener of [...readyListeners]) listener();
+        readyListeners.clear();
+      }
+      onChange();
+    } catch (error) {
+      localError = error instanceof Error ? error.message : String(error);
+      log.error(FEATURE, "Could not read this host's agents; will retry", error);
+      onChange();
+      retryLocal();
+    }
+  }
+
   return {
     start(api) {
       if (paseo) return;
       paseo = api;
-      void observeDirectory(api, LOCAL, registry, log, FEATURE)
-        .then((observation) => {
-          if (stopped) void observation.release();
-          else local = observation;
-        })
-        .catch((error: unknown) => log.error(FEATURE, "Could not read this host's agents", error));
+      void observeLocal();
       void refreshHosts();
       timer = setInterval(() => void refreshHosts(), HOSTS_REFRESH_MS);
       timer.unref?.();
@@ -123,8 +177,20 @@ export function createHostsService(registry: Registry, log: PluginLogger, onChan
       remoteWanted = true;
       void refreshHosts();
     },
+    localReady: () => localLoaded,
+    whenLocalReady(listener) {
+      if (localLoaded) {
+        listener();
+        return () => undefined;
+      }
+      readyListeners.add(listener);
+      return () => readyListeners.delete(listener);
+    },
     self: () => self,
-    summaries: () => (hosts.length > 0 ? hosts : [{ serverId: self.serverId, label: self.label, self: true, status: "online", error: null }]),
+    summaries() {
+      const list = hosts.length > 0 ? hosts : [{ serverId: self.serverId, label: self.label, self: true, status: "online" as const, error: null }];
+      return list.map((host) => (host.self && localError ? { ...host, error: `Could not read agents: ${localError}` } : host));
+    },
     labels() {
       const labels = new Map<string, string>([[LOCAL, self.label]]);
       for (const host of hosts) if (!host.self) labels.set(host.serverId, host.label);
@@ -134,6 +200,8 @@ export function createHostsService(registry: Registry, log: PluginLogger, onChan
     async stop() {
       stopped = true;
       if (timer) clearInterval(timer);
+      if (localRetry) clearTimeout(localRetry);
+      readyListeners.clear();
       await local?.release().catch(() => undefined);
       await Promise.all([...remotes.keys()].map((serverId) => disconnectRemote(serverId)));
     },

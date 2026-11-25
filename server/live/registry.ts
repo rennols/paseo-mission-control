@@ -67,6 +67,15 @@ function branchOf(placement: Placement | null | undefined): string | null {
   return typeof checkout?.currentBranch === "string" ? checkout.currentBranch : null;
 }
 
+/**
+ * Paseo's status, except that an agent with an active turn counts as running whatever the status
+ * says: a turn can be open while the status field still reads idle or initializing.
+ */
+export function lifecycleOf(agent: Pick<PaseoAgent, "status" | "activeTurn">): string {
+  if (agent.activeTurn && agent.status !== "error" && agent.status !== "closed") return "running";
+  return agent.status;
+}
+
 export interface Registry {
   entries(serverId?: string): AgentEntry[];
   get(serverId: string, agentId: string): AgentEntry | undefined;
@@ -164,8 +173,8 @@ export function createRegistry(needs: NeedsView, now: () => number = Date.now): 
     entry.createdAt = parseTime(agent.createdAt, entry.createdAt);
     entry.pendingPermissions = agent.pendingPermissions?.length ?? 0;
     const wasRunning = entry.lifecycle === "running";
-    entry.lifecycle = agent.status;
-    if (agent.status === "running") {
+    entry.lifecycle = lifecycleOf(agent);
+    if (entry.lifecycle === "running") {
       if (!wasRunning || entry.runStartedAt === null) entry.runStartedAt = parseTime(agent.activeTurn?.startedAt ?? null, at);
     } else {
       entry.runStartedAt = null;
