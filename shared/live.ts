@@ -145,3 +145,23 @@ export const extendTime = defineRpc({
   input: z.object({ itemId: z.string() }),
   output: ActionResult,
 });
+
+/** One badge on a sidebar workspace (branch) row: an open Needs you kind for agents in it. */
+export const RowBadgeSchema = z.object({
+  kind: NeedsKindSchema,
+  /** Short text on the badge: "stuck", "approve", "question", "over 45m"; "2 stuck" for two agents. */
+  label: z.string(),
+  /** Read by screen readers, e.g. "Mission Control: 1 agent waiting for approval". */
+  description: z.string(),
+});
+export type RowBadge = z.output<typeof RowBadgeSchema>;
+
+/**
+ * Streams badges for sidebar workspace rows on this host, keyed by Paseo workspace id. Workspaces
+ * with nothing open are left out, so their rows get no badge.
+ */
+export const rowBadgesWatch = defineSubscription({
+  name: "needs.row-badges.watch",
+  input: z.object({}),
+  event: z.object({ workspaces: z.record(z.string(), z.array(RowBadgeSchema)) }),
+});

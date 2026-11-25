@@ -1,6 +1,6 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { DEFAULT_CHAT_SETTINGS, chatSettings, chatSettingsWatch, type ChatSettings } from "./shared/chat";
-import { dismissNeed, extendTime, liveWatch, needsCountWatch, respondPermission, sendHint } from "./shared/live";
+import { dismissNeed, extendTime, liveWatch, needsCountWatch, respondPermission, rowBadgesWatch, sendHint } from "./shared/live";
 import { addTask, commitAndOpenPr, inboxWatch, moveTaskUp, queueWatch, removeTask, retryTask, sendBack, startTaskNow, workCountWatch } from "./shared/queue";
 import {
   DEFAULT_QUEUE_SETTINGS,
@@ -34,7 +34,7 @@ export default function contribute(server: PluginServerContext) {
     hasOpen: (agentId, kind) => needs.openFor(agentId, kind).length > 0,
   });
   const hosts = createHostsService(registry, log, () => feed.changed());
-  const feed = createFeed(registry, needs, hosts, log);
+  const feed = createFeed(registry, needs, hosts, log, () => settings.timeLimitMinutes);
 
   // Settings: kept in memory, updated on save. Defaults until the first read finishes.
   let settings: WatchdogSettings = DEFAULT_WATCHDOG_SETTINGS;
@@ -87,7 +87,7 @@ export default function contribute(server: PluginServerContext) {
   const stopChatSettings = chatHandle.subscribe((next) => {
     if (next.status !== "ready") return;
     chat = next.values;
-    log.info("settings", "Chat settings changed", { summaryCard: chat.summaryCard, quickReplies: chat.quickReplies, replies: chat.replies.length });
+    log.info("settings", "Chat settings changed", { summaryCard: chat.summaryCard, quickReplies: chat.quickReplies, replies: chat.replies.length, savedPrompts: chat.savedPrompts, prompts: chat.prompts.length });
     for (const listener of chatListeners) listener(chat);
   });
   const summaries = createSummaryService(paseo, store, () => chat, resolveStateDirectory(), log);
@@ -127,9 +127,14 @@ export default function contribute(server: PluginServerContext) {
     const remove = feed.addCount(push);
     signal.addEventListener("abort", remove, { once: true });
   });
+  paseo.handle(rowBadgesWatch, (_input, { paseo: api, push, signal }) => {
+    paseo.capture(api);
+    const remove = feed.addRowBadges(push);
+    signal.addEventListener("abort", remove, { once: true });
+  });
   paseo.handle(chatSettingsWatch, (_input, { paseo: api, push, signal }) => {
     paseo.capture(api);
-    const send = (next: ChatSettings) => push({ quickReplies: next.quickReplies, replies: next.replies });
+    const send = (next: ChatSettings) => push({ quickReplies: next.quickReplies, replies: next.replies, savedPrompts: next.savedPrompts, prompts: next.prompts });
     send(chat);
     chatListeners.add(send);
     signal.addEventListener("abort", () => chatListeners.delete(send), { once: true });

@@ -3,7 +3,8 @@
 A Paseo plugin for supervising many coding agents in parallel across hosts. Plugin id `mission-control`.
 
 Status: P0 in progress. Built: Live tab, Needs you, watchdog, sidebar footer entry, settings screen,
-turn summary card and quick reply pills.
+turn summary card and quick reply pills. P1: task queue, review inbox, saved prompts (`/p`) and
+branch row badges.
 
 Compact explore rows are not built as a plugin feature: Paseo 0.17.4 already folds runs of tool calls
 into one expandable row (Settings → Chat → Chat display: "Collapse tool calls" or "Collapse turns").
@@ -61,3 +62,15 @@ entry cannot read device settings.
 
 **Quick reply pills.** One pill per reply above every agent's composer. A pill inserts its text and
 focuses the composer; it never sends. Edit the list in Settings → Plugins → Mission Control → Chat.
+
+**Saved prompts.** A Prompts pill above every agent's composer opens a menu of saved prompts, and
+`/p <name>` in the composer does the same (`/p rev` works when only one name starts with it). Both fill
+`{branch}`, `{workspace}` and `{agent}` and put the prompt in the composer; neither sends it. Paseo
+clears `/p …` from the composer before the plugin runs, so an unknown name shows a toast and leaves
+the composer empty. Defaults: review, tdd, bugfix, docs. Edit them in Settings → Plugins → Mission
+Control → Chat, one prompt per `/name` line followed by its text. Per host, like quick replies.
+
+**Branch row badges.** A workspace row in Paseo's sidebar gets a short badge while an agent in it has
+an open Needs you card: approve, question, stuck or over 45m (the watchdog's time limit), with a count
+when several agents share one. Rows with nothing open get no badge. Hide them from the sidebar's Show
+menu ("Mission Control: Needs you"). Badges cover this host only, like Needs you.
