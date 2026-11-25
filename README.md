@@ -4,7 +4,7 @@ A Paseo plugin for supervising many coding agents in parallel across hosts. Plug
 
 Status: P0 in progress. Built: Live tab, Needs you, watchdog, sidebar footer entry, settings screen,
 turn summary card and quick reply pills. P1: task queue, review inbox, saved prompts (`/p`),
-branch row badges, and test and edit cards.
+branch row badges, and test and edit cards. Added outside the PRD's first list: collision radar.
 
 Compact explore rows are not built as a plugin feature: Paseo 0.17.4 already folds runs of tool calls
 into one expandable row (Settings → Chat → Chat display: "Collapse tool calls" or "Collapse turns").
@@ -25,6 +25,7 @@ with plugin rows would break Paseo's own folding.
 | `server/queue/` | Daemon subprocess | Task queue, slot rules, dispatcher, unattended stop, Add task catalog. |
 | `server/report/` | Daemon subprocess | Overnight report: window and per-run rules, built from stored state only. |
 | `server/inbox/` | Daemon subprocess | Review inbox: read-only git review, commit/push/`gh pr create` on click. |
+| `server/radar/` | Daemon subprocess | Collision radar: compares agents' turn snapshots per repo, read-only git. |
 | `server/chat/` | Daemon subprocess | Turn summaries: git snapshots per turn, checks read from the agent's own commands. |
 | `server/state/store.ts` | Daemon subprocess | `$PASEO_HOME/mission-control/state.json`, temp file then rename. |
 | `test/` | Node (vitest) | Unit tests for the pure parts. Not shipped. |
@@ -86,9 +87,35 @@ either card off under Settings → Plugins → Mission Control → Chat if you p
 A settings change applies to rows rendered after it; reopen a chat to redo the rows already shown.
 
 **Branch row badges.** A workspace row in Paseo's sidebar gets a short badge while an agent in it has
-an open Needs you card: approve, question, stuck or over 45m (the watchdog's time limit), with a count
+an open Needs you card: approve, question, stuck, over 45m (the watchdog's time limit) or overlap, with a count
 when several agents share one. Rows with nothing open get no badge. Hide them from the sidebar's Show
 menu ("Mission Control: Needs you"). Badges cover this host only, like Needs you.
+
+## Collision radar
+
+Needs you shows a **Collision** card when two agents on this host, in different worktrees of the same
+repo, have edited the same or adjacent lines of a file: what git would report as a merge conflict.
+The card names the other agent and its branch, and lists the files with line ranges and, when git
+finds one, the enclosing function ("app.js lines 4–5 in function greet(name)"). Both agents'
+workspace rows get an "overlap" badge. The card closes by itself when a later turn shows the overlap
+is gone, or when either agent is archived. Send a hint sends your text as that agent's next prompt;
+Dismiss keeps the pair quiet until the overlap reaches a file the card didn't list. It never pauses,
+stops, merges or sends anything on its own.
+
+How: the turn summary already snapshots each worktree as a git tree before and after every turn. The
+radar keeps each agent's tree from the start of the first turn Mission Control saw and its latest
+tree, and after each turn compares that agent with the others whose worktrees share the repo's git
+directory, using read-only `git diff --name-only`, `git ls-tree` and `git diff -U0` on those stored
+trees. It runs even with the summary card turned off (only the card is hidden).
+
+Settings → Plugins → Mission Control → Watchdog → Collision radar: **Same lines** (default), **Same
+file** (any file both changed), or **Off**.
+
+Limits: this host only (hooks don't cross hosts, so an agent on another host is never compared).
+Edits made before Mission Control saw an agent's first turn are not counted. When two agents started
+from different versions of a file, ranges are measured from the first agent's version, so the radar
+can over-report. If one agent merges the other's branch into its own and keeps editing, the merged
+lines can show as an overlap until the other agent is archived.
 
 ## Overnight report
 

@@ -3,12 +3,18 @@
  * test patterns, quick replies and saved prompts join with their features.
  */
 import { useSettings, type PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { SettingsAction, SettingsCard, SettingsInput, SettingsSection } from "@getpaseo/plugin/client/ui";
+import { SettingsAction, SettingsCard, SettingsInput, SettingsSection, SettingsSelect } from "@getpaseo/plugin/client/ui";
 import { useEffect, useState } from "react";
 import { Text } from "react-native";
 import { watchdogSettings, type WatchdogSettings } from "../shared/settings";
 
-type Field = keyof WatchdogSettings;
+type Field = Exclude<keyof WatchdogSettings, "collisionRadar">;
+
+const RADAR_OPTIONS: { label: string; value: WatchdogSettings["collisionRadar"] }[] = [
+  { label: "Same lines", value: "lines" },
+  { label: "Same file", value: "files" },
+  { label: "Off", value: "off" },
+];
 
 const FIELDS: { key: Field; label: string; hint: string; unit: string; min: number; max: number }[] = [
   { key: "sameErrorTurns", label: "Same-error repeats before Stuck", hint: "Turns in a row that hit the same error.", unit: "turns", min: 2, max: 20 },
@@ -49,8 +55,9 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
     return <Text style={{ color: theme.colors.foregroundMuted }}>Loading…</Text>;
   }
 
+  const radarMode: WatchdogSettings["collisionRadar"] = settings.status === "ready" ? settings.values.collisionRadar : "lines";
   const errors: Partial<Record<Field, string>> = {};
-  const parsed = {} as WatchdogSettings;
+  const parsed = { collisionRadar: radarMode } as WatchdogSettings;
   for (const field of FIELDS) {
     const value = Number(draft[field.key]);
     if (!Number.isInteger(value) || value < field.min || value > field.max) {
@@ -65,7 +72,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
 
   async function save(): Promise<void> {
     if (!valid || settings.status !== "ready") return;
-    const saved = await settings.save(parsed, settings.revision);
+    const saved = await settings.save({ ...parsed, collisionRadar: settings.values.collisionRadar }, settings.revision);
     if (saved) {
       setMessage("Saved. The watchdog uses the new limits from the next turn.");
     } else {
@@ -89,6 +96,19 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
             }}
           />
         ))}
+        <SettingsSelect
+          label="Collision radar"
+          hint="Flags two agents in different worktrees of one repo that edit the same lines (or any same file). It only flags."
+          value={radarMode}
+          options={RADAR_OPTIONS}
+          disabled={settings.saving || settings.status !== "ready"}
+          onValueChange={(value) => {
+            if (settings.status !== "ready") return;
+            void settings.save({ ...settings.values, collisionRadar: value }, settings.revision).then((saved) => {
+              setMessage(saved ? "Saved. The radar uses it from the next turn." : "Not saved: the settings changed elsewhere. Reload and try again.");
+            });
+          }}
+        />
         <SettingsAction
           label={message ?? (dirty ? "Unsaved changes" : "Saved per host")}
           actionLabel="Save"

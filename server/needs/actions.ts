@@ -36,6 +36,8 @@ export function createNeedsActions(
   resetCounters: (agentId: string) => void,
   agentTitle: (agentId: string) => string,
   log: PluginLogger,
+  /** A collision card was dismissed: the radar remembers which files it listed. */
+  collisionDismissed: (key: string) => void = () => undefined,
 ): NeedsActions {
   function openItem(itemId: string) {
     const item = needs.get(itemId);
@@ -76,6 +78,10 @@ export function createNeedsActions(
       if (!item) return error;
       await paseo.agents.ref(item.agentId).send(text);
       resetCounters(item.agentId);
+      if (item.kind === "collision") {
+        // The overlap is still there until the agent acts on it; the next turn re-checks it.
+        if (item.key) collisionDismissed(item.key);
+      }
       needs.resolve(item.id, `Hint sent. ${agentTitle(item.agentId)} is working again.`);
       return { ok: true, message: "Hint sent." };
     },
@@ -89,7 +95,8 @@ export function createNeedsActions(
         resetCounters(item.agentId);
         log.info(FEATURE, "Stuck flag dismissed by the user", { agentId: item.agentId, title: item.title });
       }
-      needs.resolve(item.id, "Dismissed.");
+      if (item.kind === "collision" && item.key) collisionDismissed(item.key);
+      needs.resolve(item.id, item.kind === "collision" ? "Dismissed. Flags again only if the overlap reaches another file." : "Dismissed.");
       return { ok: true, message: "Dismissed." };
     },
 

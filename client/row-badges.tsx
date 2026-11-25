@@ -1,6 +1,6 @@
 /**
  * Branch row badges (PRD: Branch row badges). A workspace row in Paseo's sidebar gets a short badge
- * while an agent in it has an open Needs you item: approve, question, stuck or over 45m. Rows with
+ * while an agent in it has an open Needs you item: approve, question, stuck, over 45m or overlap. Rows with
  * nothing open render nothing. Every badge carries text, never colour alone.
  *
  * Every row renders the component, so the client entry holds one subscription and the rows read
@@ -16,6 +16,7 @@ const TONE: Record<NeedsKind, NonNullable<WorkspaceRowBadgeProps["tone"]>> = {
   question: "warning",
   stuck: "danger",
   overtime: "info",
+  collision: "warning",
 };
 
 const ICON: Record<NeedsKind, string> = {
@@ -23,6 +24,7 @@ const ICON: Record<NeedsKind, string> = {
   question: "MessageCircleQuestion",
   stuck: "CircleAlert",
   overtime: "Timer",
+  collision: "GitMerge",
 };
 
 type Badges = Record<string, RowBadge[]>;
