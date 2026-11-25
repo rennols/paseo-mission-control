@@ -12,6 +12,7 @@ import path from "node:path";
 import { z } from "zod";
 import { TurnSummarySchema } from "../../shared/chat";
 import { NeedsItemSchema } from "../../shared/live";
+import { InboxItemSchema, QueueTaskSchema } from "../../shared/queue";
 import type { PluginLogger } from "../log";
 
 const FEATURE = "state";
@@ -22,6 +23,10 @@ export const StateSchema = z.object({
   needs: z.array(NeedsItemSchema).default([]),
   /** Minutes added per agent through "Allow 30 more min". */
   overtimeExtensions: z.record(z.string(), z.number()).default({}),
+  /** Task queue, in queue order, plus recent finished runs (P1). */
+  queue: z.array(QueueTaskSchema).default([]),
+  /** Review inbox items (P1). */
+  inbox: z.array(InboxItemSchema).default([]),
   /** Recent turn summaries, newest last (PRD data model: copy in state file). Feeds the review inbox later. */
   summaries: z.array(TurnSummarySchema).default([]),
   /** Local counters for the success metrics (PRD: Success metrics). */

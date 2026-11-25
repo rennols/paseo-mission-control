@@ -21,6 +21,8 @@ with plugin rows would break Paseo's own folding.
 | `server/watchdog/` | Daemon subprocess | Turn analysis, counting rules, read-only git check, hook wiring. |
 | `server/needs/` | Daemon subprocess | Needs you items and the card actions (RPC handlers). |
 | `server/live/` | Daemon subprocess | Agent registry, lanes, host directories, the snapshot feed. |
+| `server/queue/` | Daemon subprocess | Task queue, slot rules, dispatcher, unattended stop, Add task catalog. |
+| `server/inbox/` | Daemon subprocess | Review inbox: read-only git review, commit/push/`gh pr create` on click. |
 | `server/chat/` | Daemon subprocess | Turn summaries: git snapshots per turn, checks read from the agent's own commands. |
 | `server/state/store.ts` | Daemon subprocess | `$PASEO_HOME/mission-control/state.json`, temp file then rename. |
 | `test/` | Node (vitest) | Unit tests for the pure parts. Not shipped. |
