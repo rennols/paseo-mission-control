@@ -3,14 +3,14 @@
  * the user's behalf. Resolved cards collapse to one line saying what happened.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useRpc } from "@getpaseo/plugin/client";
+import { useAgent, useRpc } from "@getpaseo/plugin/client";
 import { TextInput, useToast } from "@getpaseo/plugin/client/ui";
 import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { dismissNeed, extendTime, respondPermission, sendHint, type ActionResult, type NeedsItem } from "../shared/live";
 import { EXTEND_MINUTES } from "../shared/settings";
 import { Button, FONT, MONO, Pill, cardStyle, formatElapsed } from "./parts";
-import { presentRequest } from "./ui-format";
+import { optionLabel, presentRequest, relativeToCwd } from "./ui-format";
 
 const KIND_LABEL: Record<NeedsItem["kind"], string> = {
   stuck: "Stuck",
@@ -50,6 +50,7 @@ export function NeedsCard({
   const [busy, setBusy] = useState<string | null>(null);
   const [hintOpen, setHintOpen] = useState(false);
   const [hintText, setHintText] = useState("");
+  const cwd = useAgent(item.agentId, (agent) => agent.cwd);
 
   const styles = useMemo(
     () => ({
@@ -67,7 +68,7 @@ export function NeedsCard({
         paddingVertical: 6,
       },
       detail: { color: theme.colors.foreground, fontSize: FONT.meta, lineHeight: 18, fontFamily: MONO },
-      option: { color: theme.colors.foregroundMuted, fontSize: FONT.meta },
+      option: { color: theme.colors.foregroundMuted, fontSize: FONT.body, lineHeight: 19 },
       actions: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8 },
       request: { gap: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: theme.colors.border },
       input: {
@@ -109,8 +110,16 @@ export function NeedsCard({
     );
   }
 
+  // A question is answered in the chat, so there it is the main button. Elsewhere it is for context.
+  const answerInChat = item.kind === "question";
   const openChat = onOpenChat ? (
-    <Button theme={theme} label="Open chat" onPress={() => onOpenChat(item.agentId)} accessibilityLabel={`Open chat with ${item.agentTitle}`} />
+    <Button
+      theme={theme}
+      primary={answerInChat}
+      label={answerInChat ? "Answer in chat" : "Open chat"}
+      onPress={() => onOpenChat(item.agentId)}
+      accessibilityLabel={answerInChat ? `Answer ${item.agentTitle} in its chat` : `Open chat with ${item.agentTitle}`}
+    />
   ) : null;
 
   return (
@@ -125,7 +134,7 @@ export function NeedsCard({
 
       {item.kind === "permission" ? (
         item.requests.map((request, index) => {
-          const shown = presentRequest(request.title, request.detail);
+          const shown = presentRequest(relativeToCwd(request.title, cwd), request.detail === null ? null : relativeToCwd(request.detail, cwd));
           return (
             <View key={request.requestId} style={index === 0 ? { gap: 6 } : styles.request}>
               <Text style={styles.title} numberOfLines={4}>
@@ -157,6 +166,7 @@ export function NeedsCard({
                   accessibilityLabel={`Deny: ${request.title}`}
                   onPress={() => void run(`deny-${request.requestId}`, () => respond({ itemId: item.id, requestId: request.requestId, decision: "deny" }))}
                 />
+                {index === item.requests.length - 1 ? openChat : null}
               </View>
             </View>
           );
@@ -173,12 +183,16 @@ export function NeedsCard({
               </Text>
             </View>
           ) : null}
-          {item.options.map((option) => (
-            <Text key={option.label} style={styles.option}>
-              • {option.label}
-              {option.description ? `: ${option.description}` : ""}
-            </Text>
-          ))}
+          {item.options.length > 0 ? (
+            <View style={{ gap: 4 }} accessibilityLabel={`${item.options.length} options`}>
+              {item.options.map((option, index) => (
+                <Text key={option.label} style={styles.option}>
+                  <Text style={{ color: theme.colors.foreground, fontWeight: "600" }}>{optionLabel(index, option.label)}</Text>
+                  {option.description ? ` — ${option.description}` : ""}
+                </Text>
+              ))}
+            </View>
+          ) : null}
         </>
       )}
 

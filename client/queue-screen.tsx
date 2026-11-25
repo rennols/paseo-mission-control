@@ -7,7 +7,7 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc, useSubscription, type PluginScreenProps } from "@getpaseo/plugin/client";
 import { ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/ui";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import { STATUS_LABEL } from "../shared/live";
 import {
@@ -290,7 +290,10 @@ function TaskRow({
 export function QueueScreen({ theme, layout, navigation, host, onOpenInbox }: PluginScreenProps & { onOpenInbox?: () => void }) {
   const [snapshot, setSnapshot] = useState<QueueSnapshot | null>(null);
   const [adding, setAdding] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const subscription = useSubscription(queueWatch, {}, setSnapshot);
+  const remove = useRpc(removeTask);
+  const toast = useToast();
   const pad = pagePadding(layout.compact);
   const styles = useMemo(
     () => ({
@@ -313,20 +316,67 @@ export function QueueScreen({ theme, layout, navigation, host, onOpenInbox }: Pl
   const live = snapshot.tasks.filter((task) => task.state === "starting" || task.state === "running");
   const done = snapshot.tasks.filter((task) => task.state === "finished" || task.state === "failed" || task.state === "stopped");
 
-  const section = (title: string, tasks: QueueTask[], empty: string) => (
+  const section = (title: string, tasks: QueueTask[], trailing?: ReactNode) => (
     <View style={{ gap: 4 }}>
-      <SectionHeader theme={theme} title={title} count={tasks.length} />
-      {tasks.length === 0 ? (
-        <EmptyNote theme={theme}>{empty}</EmptyNote>
-      ) : (
-        tasks.map((task) => <TaskRow key={task.id} theme={theme} task={task} firstQueued={task.id === firstQueuedId} now={now} onOpenChat={openChat} />)
-      )}
+      <SectionHeader theme={theme} title={title} count={tasks.length} trailing={trailing} />
+      {tasks.map((task) => (
+        <TaskRow key={task.id} theme={theme} task={task} firstQueued={task.id === firstQueuedId} now={now} onOpenChat={openChat} />
+      ))}
     </View>
   );
+  const finished = done.filter((task) => task.state === "finished");
+
+  async function clearFinished(): Promise<void> {
+    setClearing(true);
+    let cleared = 0;
+    try {
+      for (const task of finished) {
+        const result = await remove({ taskId: task.id });
+        if (result.ok) cleared += 1;
+      }
+      toast.show(`Cleared ${cleared} finished task${cleared === 1 ? "" : "s"}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setClearing(false);
+    }
+  }
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: pad, gap: 16 }}>
+      {adding ? (
+        <AddTaskForm theme={theme} snapshot={snapshot} onDone={() => setAdding(false)} />
+      ) : (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <Button theme={theme} primary label="Add task" onPress={() => setAdding(true)} />
+          <Text style={styles.note}>
+            {free > 0
+              ? `${free} of ${snapshot.slotLimit} slots free: a new task starts now.`
+              : `All ${snapshot.slotLimit} slots busy: a new task waits its turn.`}
+          </Text>
+        </View>
+      )}
+
+      {snapshot.catalogError ? (
+        <Text style={{ color: theme.colors.statusDanger, fontSize: FONT.meta }} accessibilityRole="alert">
+          ⚠ {snapshot.catalogError}
+        </Text>
+      ) : null}
+
+      {queued.length === 0 && live.length === 0 ? (
+        <View style={{ gap: 4 }}>
+          <SectionHeader theme={theme} title="Queued and running" count={0} />
+          <EmptyNote theme={theme}>Nothing queued or running. Added tasks start in order as slots free up.</EmptyNote>
+        </View>
+      ) : (
+        <>
+          {queued.length > 0 ? section("Queued", queued) : null}
+          {live.length > 0 ? section("Running", live) : null}
+        </>
+      )}
+
       <OvernightReportCard theme={theme} onOpenChat={openChat} onOpenInbox={onOpenInbox ?? null} />
+
       <View style={styles.card} accessible accessibilityLabel={`${busySlots} of ${snapshot.slotLimit} slots busy on ${snapshot.hostLabel}, ${free} free`}>
         <SectionHeader theme={theme} title={`Slots on ${snapshot.hostLabel}`} trailing={<Text style={styles.note}>{busySlots} of {snapshot.slotLimit} busy</Text>} />
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
@@ -348,23 +398,26 @@ export function QueueScreen({ theme, layout, navigation, host, onOpenInbox }: Pl
         ) : null}
       </View>
 
-      {snapshot.catalogError ? (
-        <Text style={{ color: theme.colors.statusDanger, fontSize: FONT.meta }} accessibilityRole="alert">
-          ⚠ {snapshot.catalogError}
-        </Text>
-      ) : null}
-
-      {adding ? (
-        <AddTaskForm theme={theme} snapshot={snapshot} onDone={() => setAdding(false)} />
-      ) : (
-        <View style={{ flexDirection: "row" }}>
-          <Button theme={theme} primary label="Add task" onPress={() => setAdding(true)} />
+      {done.length === 0 ? (
+        <View style={{ gap: 4 }}>
+          <SectionHeader theme={theme} title="Last 24 hours" count={0} />
+          <EmptyNote theme={theme}>No finished queue runs yet.</EmptyNote>
         </View>
+      ) : (
+        section(
+          "Last 24 hours",
+          done,
+          finished.length > 1 ? (
+            <Button
+              theme={theme}
+              label={`Clear ${finished.length} finished`}
+              busy={clearing}
+              onPress={() => void clearFinished()}
+              accessibilityLabel={`Clear ${finished.length} finished tasks from the list`}
+            />
+          ) : undefined,
+        )
       )}
-
-      {section("Queued", queued, "Nothing queued. Tasks start in order as slots free up.")}
-      {section("Running", live, "No queue runs right now.")}
-      {section("Last 24 hours", done, "No finished queue runs yet.")}
       <Text style={styles.note}>The queue is per host. Open Mission Control on another host to queue work there.</Text>
     </ScrollView>
   );

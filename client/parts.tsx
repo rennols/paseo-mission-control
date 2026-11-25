@@ -228,3 +228,21 @@ export function ScreenState({ theme, hostLabel, error }: { theme: PluginTheme; h
     </View>
   );
 }
+
+/** A text button that shows or hides a list: "Show closed agents · 4 ▾". */
+export function Toggle({ theme, label, open, onPress }: { theme: PluginTheme; label: string; open: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+      accessibilityLabel={label}
+      onPress={onPress}
+      hitSlop={6}
+      style={{ minHeight: 32, justifyContent: "center", alignSelf: "flex-start" }}
+    >
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta, fontWeight: "600" }}>
+        {label} {open ? "▴" : "▾"}
+      </Text>
+    </Pressable>
+  );
+}

@@ -1,7 +1,7 @@
 /**
  * Mission Control, Review inbox tab: agents on this host that finished with changes still in their
- * worktree, oldest first. Renders what the server pushes on `inbox.watch`. Commit and open PR and
- * Send back are one RPC each, from a click; nothing runs on its own.
+ * worktree, oldest first. Renders what the server pushes on `inbox.watch`. Commit, push and open PR
+ * and Send back are one RPC each, from a click; nothing runs on its own.
  */
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc, useSubscription, type PluginScreenProps } from "@getpaseo/plugin/client";
@@ -9,8 +9,8 @@ import { ExternalLink, ScrollView, TextInput, useToast } from "@getpaseo/plugin/
 import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { commitAndOpenPr, inboxWatch, sendBack, type InboxItem, type InboxSnapshot } from "../shared/queue";
-import { Button, EmptyNote, FONT, MONO, Pill, ScreenState, SectionHeader, cardStyle, formatElapsed, pagePadding } from "./parts";
-import { plainSummary } from "./ui-format";
+import { Button, EmptyNote, FONT, MONO, Pill, ScreenState, SectionHeader, Toggle, cardStyle, formatElapsed, pagePadding } from "./parts";
+import { isLong, plainSummary } from "./ui-format";
 
 const FILES_SHOWN = 12;
 
@@ -30,7 +30,12 @@ function InboxCard({
   const back = useRpc(sendBack);
   const [busy, setBusy] = useState<"pr" | "back" | null>(null);
   const [title, setTitle] = useState(item.title);
-  const [noteOpen, setNoteOpen] = useState(false);
+  // One step at a time: the PR title box and the Send back note only show once you pick that action,
+  // and the PR opens from a second, explicit click (it pushes, so it is worth a look first).
+  const [mode, setMode] = useState<"idle" | "pr" | "back">("idle");
+  const noteOpen = mode === "back";
+  const setNoteOpen = (open: boolean) => setMode(open ? "back" : "idle");
+  const [fullSummary, setFullSummary] = useState(false);
   const [note, setNote] = useState("");
   const [showDiff, setShowDiff] = useState(false);
   const [allFiles, setAllFiles] = useState(false);
@@ -134,9 +139,14 @@ function InboxCard({
         </View>
       ) : null}
       {item.summary ? (
-        <Text style={styles.body} numberOfLines={8}>
-          {plainSummary(item.summary)}
-        </Text>
+        <View style={{ gap: 2 }}>
+          <Text style={styles.body} numberOfLines={fullSummary ? undefined : 4}>
+            {plainSummary(item.summary)}
+          </Text>
+          {isLong(plainSummary(item.summary)) ? (
+            <Toggle theme={theme} open={fullSummary} onPress={() => setFullSummary(!fullSummary)} label={fullSummary ? "Show less" : "Show more"} />
+          ) : null}
+        </View>
       ) : null}
       <Text style={styles.label}>
         {item.files.length} file{item.files.length === 1 ? "" : "s"} · +{item.linesAdded} −{item.linesRemoved}
@@ -171,8 +181,16 @@ function InboxCard({
           </ScrollView>
         ) : null
       ) : null}
-      <Text style={styles.label}>Commit message and PR title</Text>
-      <TextInput accessibilityLabel="Commit message and PR title" value={title} onChangeText={setTitle} style={styles.input} />
+      {mode === "pr" ? (
+        <View style={{ gap: 6 }}>
+          <Text style={styles.label}>Commit message and PR title</Text>
+          <TextInput accessibilityLabel="Commit message and PR title" autoFocus value={title} onChangeText={setTitle} style={styles.input} />
+          <Text style={styles.muted}>
+            Commits everything in the worktree, pushes {item.branch ?? "the branch"}, then opens a PR
+            {item.baseBranch ? ` into ${item.baseBranch}` : ""} with gh.
+          </Text>
+        </View>
+      ) : null}
       {noteOpen ? (
         <TextInput
           accessibilityLabel={`Note for ${item.title}`}
@@ -185,19 +203,32 @@ function InboxCard({
         />
       ) : null}
       <View style={styles.row}>
-        {noteOpen ? (
+        {mode === "back" ? (
           <>
             <Button theme={theme} primary label="Send back" busy={busy === "back"} disabled={!note.trim() || busy !== null} onPress={() => void doSendBack()} accessibilityLabel={`Send ${item.title} back with the note`} />
-            <Button theme={theme} label="Cancel" onPress={() => setNoteOpen(false)} />
+            <Button theme={theme} label="Cancel" onPress={() => setMode("idle")} />
+          </>
+        ) : mode === "pr" ? (
+          <>
+            <Button
+              theme={theme}
+              primary
+              label="Commit, push and open PR"
+              busy={busy === "pr"}
+              disabled={busy !== null || title.trim().length === 0}
+              onPress={() => void doPr()}
+              accessibilityLabel={`Commit, push and open a PR for ${item.title}`}
+            />
+            <Button theme={theme} label="Cancel" disabled={busy !== null} onPress={() => setMode("idle")} />
           </>
         ) : (
           <>
-            <Button theme={theme} primary label="Commit and open PR" busy={busy === "pr"} disabled={busy !== null} onPress={() => void doPr()} accessibilityLabel={`Commit and open a PR for ${item.title}`} />
-            <Button theme={theme} label="Send back" disabled={busy !== null} onPress={() => setNoteOpen(true)} accessibilityLabel={`Send ${item.title} back with a note`} />
+            <Button theme={theme} primary label="Open a PR…" disabled={busy !== null} onPress={() => setMode("pr")} accessibilityLabel={`Open a PR for ${item.title}: check the title first`} />
+            <Button theme={theme} label="Send back…" disabled={busy !== null} onPress={() => setNoteOpen(true)} accessibilityLabel={`Send ${item.title} back with a note`} />
           </>
         )}
-        {item.diffExcerpt ? <Button theme={theme} label={showDiff ? "Hide diff" : "Show diff"} onPress={() => setShowDiff(!showDiff)} /> : null}
-        {onOpenChat ? <Button theme={theme} label="Open chat" onPress={() => onOpenChat(item.agentId)} accessibilityLabel={`Open chat with ${item.title}`} /> : null}
+        {mode === "idle" && item.diffExcerpt ? <Button theme={theme} label={showDiff ? "Hide diff" : "Show diff"} onPress={() => setShowDiff(!showDiff)} /> : null}
+        {mode === "idle" && onOpenChat ? <Button theme={theme} label="Open chat" onPress={() => onOpenChat(item.agentId)} accessibilityLabel={`Open chat with ${item.title}`} /> : null}
       </View>
     </View>
   );
@@ -233,9 +264,7 @@ export function InboxScreen({ theme, layout, navigation, host }: PluginScreenPro
           ))}
         </View>
       ) : null}
-      <Text style={note}>
-        Commit and open PR runs git add, commit and push, then gh pr create, in that agent's worktree. The inbox is per host.
-      </Text>
+      <Text style={note}>Open a PR runs git add, commit and push, then gh pr create, in that agent's worktree. The inbox is per host.</Text>
     </ScrollView>
   );
 }
