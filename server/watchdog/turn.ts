@@ -33,7 +33,7 @@ export interface TurnFacts {
   asksQuestion: string | null;
 }
 
-type Item = Record<string, unknown>;
+export type Item = Record<string, unknown>;
 
 function asRecord(value: unknown): Item | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Item) : null;
@@ -104,7 +104,7 @@ function cut(text: string, max: number): string {
   return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine;
 }
 
-function shellCommand(item: Item): string | null {
+export function shellCommand(item: Item): string | null {
   const detail = asRecord(item.detail);
   if (detail?.type === "shell") return str(detail.command);
   const input = asRecord(detail?.input) ?? asRecord(item.input);
