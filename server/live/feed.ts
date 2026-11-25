@@ -3,11 +3,12 @@
  * Changes are coalesced (at most one push per 250 ms), and a snapshot is pushed every 15 s while
  * someone listens so lanes keep moving. The client never polls.
  */
-import type { LiveSnapshot } from "../../shared/live";
+import type { LiveSnapshot, RowBadge } from "../../shared/live";
 import type { PluginLogger } from "../log";
 import type { NeedsStore } from "../needs/needs";
 import type { HostsService } from "./hosts";
-import type { Registry } from "./registry";
+import { LOCAL, type Registry } from "./registry";
+import { rowBadges } from "./row-badges";
 
 const FEATURE = "live";
 const COALESCE_MS = 250;
@@ -22,14 +23,28 @@ export interface Feed {
   addLive(push: Push<LiveSnapshot>): () => void;
   /** Registers a sidebar entry. Sends the count at once. Returns a remover. */
   addCount(push: Push<{ open: number }>): () => void;
+  /** Registers the sidebar's workspace row badges. Sends them at once, then only on change. */
+  addRowBadges(push: Push<{ workspaces: Record<string, RowBadge[]> }>): () => void;
   changed(): void;
   snapshot(): LiveSnapshot;
   stop(): void;
 }
 
-export function createFeed(registry: Registry, needs: NeedsStore, hosts: HostsService, log: PluginLogger): Feed {
+export function createFeed(
+  registry: Registry,
+  needs: NeedsStore,
+  hosts: HostsService,
+  log: PluginLogger,
+  timeLimitMinutes: () => number = () => 45,
+): Feed {
   const live = new Set<Push<LiveSnapshot>>();
   const counts = new Set<Push<{ open: number }>>();
+  const badges = new Set<Push<{ workspaces: Record<string, RowBadge[]> }>>();
+  let lastBadges = "";
+
+  function badgeEvent(): { workspaces: Record<string, RowBadge[]> } {
+    return { workspaces: rowBadges(needs.list(), (agentId) => registry.get(LOCAL, agentId)?.workspaceId, timeLimitMinutes()) };
+  }
   let pending: NodeJS.Timeout | null = null;
   let heartbeat: NodeJS.Timeout | null = null;
   let lastCount = -1;
@@ -61,6 +76,16 @@ export function createFeed(registry: Registry, needs: NeedsStore, hosts: HostsSe
       lastCount = open;
     } catch (error) {
       log.error(FEATURE, "Could not build the Live snapshot", error);
+    }
+    try {
+      if (badges.size > 0) {
+        const event = badgeEvent();
+        const key = JSON.stringify(event);
+        if (force || key !== lastBadges) send(badges, event);
+        lastBadges = key;
+      }
+    } catch (error) {
+      log.error(FEATURE, "Could not build the row badges", error);
     }
   }
 
@@ -117,6 +142,17 @@ export function createFeed(registry: Registry, needs: NeedsStore, hosts: HostsSe
       push({ open: needs.openCount() }).catch(() => undefined);
       return () => counts.delete(push);
     },
+    addRowBadges(push) {
+      badges.add(push);
+      try {
+        const event = badgeEvent();
+        lastBadges = JSON.stringify(event);
+        push(event).catch(() => undefined);
+      } catch (error) {
+        log.error(FEATURE, "Could not build the row badges", error);
+      }
+      return () => badges.delete(push);
+    },
     changed,
     snapshot,
     stop() {
@@ -126,6 +162,7 @@ export function createFeed(registry: Registry, needs: NeedsStore, hosts: HostsSe
       if (heartbeat) clearInterval(heartbeat);
       live.clear();
       counts.clear();
+      badges.clear();
     },
   };
 }
