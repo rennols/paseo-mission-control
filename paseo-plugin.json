@@ -1,0 +1,9 @@
+{
+  "id": "mission-control",
+  "name": "Mission Control",
+  "description": "Supervise many coding agents across hosts: one live agent tree, a Needs you list, and a stuck-agent watchdog.",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.17.4 <0.18.0"
+  }
+}
