@@ -1,6 +1,8 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
+import { DEFAULT_CHAT_SETTINGS, chatSettings, chatSettingsWatch, type ChatSettings } from "./shared/chat";
 import { dismissNeed, extendTime, liveWatch, needsCountWatch, respondPermission, sendHint } from "./shared/live";
 import { DEFAULT_WATCHDOG_SETTINGS, watchdogSettings, type WatchdogSettings } from "./shared/settings";
+import { createSummaryService } from "./server/chat/summary";
 import { createFeed } from "./server/live/feed";
 import { createHostsService } from "./server/live/hosts";
 import { LOCAL, createRegistry } from "./server/live/registry";
@@ -39,6 +41,27 @@ export default function contribute(server: PluginServerContext) {
     }
   });
 
+  // Chat settings: summary card and quick replies. Pushed to every client that registers pills.
+  let chat: ChatSettings = DEFAULT_CHAT_SETTINGS;
+  const chatListeners = new Set<(next: ChatSettings) => void>();
+  const chatHandle = paseo.registerSettings(chatSettings);
+  void chatHandle
+    .read()
+    .then((state) => {
+      if (state.status === "ready") {
+        chat = state.values;
+        for (const listener of chatListeners) listener(chat);
+      } else log.warn("settings", "Chat settings are invalid; using defaults", state.error);
+    })
+    .catch((error: unknown) => log.error("settings", "Could not read chat settings", error));
+  const stopChatSettings = chatHandle.subscribe((next) => {
+    if (next.status !== "ready") return;
+    chat = next.values;
+    log.info("settings", "Chat settings changed", { summaryCard: chat.summaryCard, quickReplies: chat.quickReplies, replies: chat.replies.length });
+    for (const listener of chatListeners) listener(chat);
+  });
+  const summaries = createSummaryService(paseo, store, () => chat, resolveStateDirectory(), log);
+
   const watchdog = createWatchdog(paseo, registry, needs, store, () => settings, log);
   const actions = createNeedsActions(
     needs,
@@ -67,6 +90,13 @@ export default function contribute(server: PluginServerContext) {
     const remove = feed.addCount(push);
     signal.addEventListener("abort", remove, { once: true });
   });
+  paseo.handle(chatSettingsWatch, (_input, { paseo: api, push, signal }) => {
+    paseo.capture(api);
+    const send = (next: ChatSettings) => push({ quickReplies: next.quickReplies, replies: next.replies });
+    send(chat);
+    chatListeners.add(send);
+    signal.addEventListener("abort", () => chatListeners.delete(send), { once: true });
+  });
   paseo.handle(respondPermission, async (input, { paseo: api }) => {
     paseo.capture(api);
     return actions.respondPermission(api, input);
@@ -86,7 +116,10 @@ export default function contribute(server: PluginServerContext) {
 
   return async () => {
     watchdog.stop();
+    summaries.stop();
     stopSettings();
+    stopChatSettings();
+    chatListeners.clear();
     feed.stop();
     await hosts.stop();
     await store.flush();
