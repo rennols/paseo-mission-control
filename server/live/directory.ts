@@ -22,9 +22,15 @@ export async function observeDirectory(
   registry: Registry,
   log: PluginLogger,
   feature: string,
+  onError: (error: unknown) => void = () => undefined,
 ): Promise<DirectoryObservation> {
   const result = await paseo.agents.list({ subscribe: {}, page: { limit: 200 }, includeBackground: false });
-  registry.replaceHost(serverId, (result.entries as DirectoryEntry[]).map(({ agent, project }) => ({ agent, project })));
+  const entries = result.entries as DirectoryEntry[];
+  registry.replaceHost(serverId, entries.map(({ agent, project }) => ({ agent, project })));
+  log.info(feature, `Read ${entries.length} agents from ${serverId}`, {
+    byStatus: countBy(entries.map(({ agent }) => (agent.activeTurn ? `${agent.status}+turn` : agent.status))),
+    archived: entries.filter(({ agent }) => agent.archivedAt).length,
+  });
   if (result.pageInfo.hasMore) log.warn(feature, `Host ${serverId} has more than 200 agents; showing the first 200`);
 
   const stop = result.subscription.subscribe({
@@ -39,6 +45,7 @@ export async function observeDirectory(
     },
     error(error) {
       log.error(feature, `Agent directory for ${serverId} failed`, error);
+      onError(error);
     },
   });
 
@@ -48,4 +55,10 @@ export async function observeDirectory(
       await result.subscription.release().catch(() => undefined);
     },
   };
+}
+
+function countBy(values: string[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const value of values) counts[value] = (counts[value] ?? 0) + 1;
+  return counts;
 }

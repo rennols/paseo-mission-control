@@ -12,6 +12,8 @@ import type { Registry } from "./registry";
 const FEATURE = "live";
 const COALESCE_MS = 250;
 const HEARTBEAT_MS = 15_000;
+/** Longest a new Live tab waits for this host's agents before it gets a snapshot anyway. */
+const FIRST_PUSH_WAIT_MS = 3_000;
 
 type Push<T> = (event: T) => Promise<void>;
 
@@ -85,10 +87,30 @@ export function createFeed(registry: Registry, needs: NeedsStore, hosts: HostsSe
 
   return {
     addLive(push) {
-      live.add(push);
-      push(snapshot()).catch((error: unknown) => log.warn(FEATURE, "First push failed", error instanceof Error ? error.message : String(error)));
-      ensureHeartbeat();
-      return () => live.delete(push);
+      // Right after the plugin (re)starts this host's agents haven't been read yet, and an empty
+      // first snapshot reads as "0 working". Wait for the first read, up to 3 s.
+      let removed = false;
+      let fallback: NodeJS.Timeout | null = null;
+      const begin = () => {
+        if (removed || live.has(push)) return;
+        if (fallback) clearTimeout(fallback);
+        offReady();
+        live.add(push);
+        push(snapshot()).catch((error: unknown) => log.warn(FEATURE, "First push failed", error instanceof Error ? error.message : String(error)));
+        ensureHeartbeat();
+      };
+      const offReady = hosts.localReady() ? () => undefined : hosts.whenLocalReady(begin);
+      if (hosts.localReady()) begin();
+      else {
+        fallback = setTimeout(begin, FIRST_PUSH_WAIT_MS);
+        fallback.unref?.();
+      }
+      return () => {
+        removed = true;
+        if (fallback) clearTimeout(fallback);
+        offReady();
+        live.delete(push);
+      };
     },
     addCount(push) {
       counts.add(push);
