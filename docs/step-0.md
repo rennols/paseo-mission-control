@@ -95,3 +95,67 @@ Produce each event, one at a time, in a git project:
 
 Collect: `cat ~/.paseo/mission-control/hook-log.jsonl` (or under your `PASEO_HOME`). Read it before
 pasting: it contains prompts and paths. Turn it off afterwards with `paseo plugin disable mission-control`.
+
+## 5. Real run on Ren's daemon (2026-11-25, host "Neuro", Claude provider)
+
+76 log lines, from seq 1 to 76. Every event in section 4 fired except the second host. The worker was
+started by an agent through Paseo's own MCP tool `mcp__paseo__create_agent`.
+
+### Answers to the open questions
+
+| Question | Answer | Evidence |
+|---|---|---|
+| Exact hook names for agent created, turn ended, permission requested | `agent.create.after`, `agent.turn.after`, `agent.permission.before`, registered with `server.addHook`. Archive is `agent.archive.after`, followed by `agent.close.after` in the same millisecond. | seq 9, 11, 19, 48, 49 |
+| Do hooks see permission requests? | Yes, with the full request, at the moment it is raised. The SDK's `pendingPermissions` holds the same object. `agent.permission.after` fires for every resolution, including answers given in the app or CLI: `{ behavior: "allow", selectedActionId: "accept" }`, `{ behavior: "deny", selectedActionId: "reject", message: "Denied by user" }`, or `{ behavior: "deny", message: "Dismissed by user" }` for a dismissed question. | seq 19 to 21, 46 to 53 |
+| Does the SDK expose commit, push and open PR? | No. Call `git` and `gh` from the server. | `@getpaseo/client` 0.17.4 types |
+| Where should plugin state live? | `$PASEO_HOME/mission-control/state.json`. Paseo has no plugin data directory. The logger wrote to `~/.paseo/mission-control/` with no problems. The folder survives `paseo plugin remove`. | seq 1 |
+| Can one host's plugin call RPCs on another host's copy? | No. Read other hosts' agents through `paseo.hosts.client(serverId)`. "Neuro" has no saved hosts (`hosts: []`), so the two-host run is still to do. | seq 3, docs, types |
+| Is there a provider signal for "the agent is asking a question"? | For tool questions, yes: `kind: "question"` with the question, a header and the options. For questions in plain text, no: only the final message ("Red or blue?"). | seq 31, 38 |
+
+### New findings from the real run
+
+- Workers: `agent.create.after` has `parentAgentId`. `agent.open.before` also carries the labels
+  `paseo.parent-agent-id` and `paseo.parent-server-id`, so a parent on another host can be identified.
+  A worker joins its parent's workspace, so no workspace hooks fire for it (seq 66 to 68).
+- Paseo starts turns on its own: when the worker finished, the parent got a new turn with no user
+  message, to report the result (seq 74 to 76). The watchdog must not count these as turns with no file changes.
+- Paseo's MCP tools ask for permission like any other tool. Starting one worker took three approvals:
+  `list_providers`, `list_models`, `create_agent` (seq 57 to 65). An orchestrator will raise many Permission cards.
+- `turnId` is `foreground-turn-<uuid>-<n>`, and `<n>` counts up for each turn of the same agent session.
+- Every hook handler stayed under 50 ms (no warnings), and there was 1 SDK instance across all events.
+
+### Not yet verified
+
+- Two hosts: hooks staying on their own host, and `hosts.client` reads between workstation and mac-mini.
+- Answering a tool question from the plugin: the question was dismissed, so we haven't seen the answer's shape.
+- A failing command on this machine (the `npm test` permission was denied). The cloud run covered
+  Claude's failure shape. Codex payloads are not covered yet.
+
+## 6. PRD changes needed
+
+1. **Name and id**: Control Room, `control-room` → Mission Control, `mission-control`, everywhere.
+2. **Event pipeline** (Technical design, Server): register with `server.addHook` only. Hooks used:
+   `agent.create.after` (tree, nesting), `agent.turn.before` (snapshot for the summary diff),
+   `agent.turn.after` (watchdog, summary), `agent.permission.before` / `.after` (Needs you), `agent.archive.after`.
+   Remove "agent finished": use `agent.turn.after` with `outcome`.
+3. **Workers**: nest by `parentAgentId`, and keep the parent's host from `paseo.parent-server-id`.
+4. **Needs you, Permission**: a card closes on `agent.permission.after` whatever answered it, including the
+   Paseo app or CLI. Group cards per agent, because orchestrators raise several in a row.
+5. **Needs you, Question**: split into two kinds. A tool question (`kind: "question"`) shows its question and
+   options, with Open chat until we verify answering from the plugin. A text question keeps the final-message rule.
+6. **Watchdog**: build the error signature from failed `tool_call` items (`status: "failed"` and `error.content`,
+   or `detail.output`). `exitCode` is optional. Skip turns that Paseo starts on its own (no user message) when
+   counting turns without file changes.
+7. **Pause and the unattended stop**: the plugin SDK can't cancel a turn. Choose between `reload()` as the
+   interrupt, archive, or asking Paseo for `cancel()`. Until then, Pause is not buildable as written.
+8. **Startup**: "rebuilt from hooks and the SDK at start" becomes "rebuilt on the first hook or RPC after start",
+   because the server only gets the SDK inside a handler. The dispatcher can't start queued work after a
+   daemon restart until some agent activity or a screen open.
+9. **Summary card**: read the turn with `timeline.refetch({ direction: "tail", limit: 1, wholeTurns: true })`
+   filtered by `turnId`, and handle an empty read. Rows vanish on daemon restart: re-append them from the state file.
+10. **Commit and PR**: Review inbox runs `git` and `gh pr create` in the worktree. Remove "uses Paseo's own flow".
+11. **Multiple hosts**: Needs you, queue and inbox are per host. The Live tab reads other hosts' agents with `hosts.client`.
+12. **Persistence**: `$PASEO_HOME/mission-control/state.json`, with `~/.paseo` as the default home.
+13. **Compatibility**: `requirements.paseo` is `>=0.17.4 <0.18.0`, not `>=0.8.0`.
+14. **Background agents**: hide agents with `background: true` from the tree and Needs you.
+15. **Open questions**: replace with the answers above. Keep the two-host run and question answering as open items.
