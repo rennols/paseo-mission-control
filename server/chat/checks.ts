@@ -3,10 +3,10 @@
  * Reads only the tool calls already in the turn. The plugin never runs a check itself.
  */
 import type { SummaryCheck } from "../../shared/chat";
-import { checkSegment, cut, failureInOutput, passLine } from "../../shared/check-output";
+import { checkKey, checkSegment, covers, cut, failureInOutput, passLine } from "../../shared/check-output";
 import { errorText, firstErrorLine, shellCommand, type Item } from "../watchdog/turn";
 
-export { checkSegment, failureInOutput, matchesCheck, passLine } from "../../shared/check-output";
+export { checkKey, checkSegment, covers, failureInOutput, matchesCheck, passLine } from "../../shared/check-output";
 
 const MAX_CHECKS = 10;
 
@@ -15,8 +15,10 @@ function asRecord(value: unknown): Item | null {
 }
 
 /**
- * Check commands the agent ran in the turn, in the order they last ran. A command run more than once
- * keeps its last result, which is the state the turn ended in.
+ * Check commands the agent ran in the turn, in the order they last ran. A check run more than once
+ * keeps its last result, which is the state the turn ended in: a later run replaces any earlier run
+ * it covers (see `covers`), so "npm test" failing, then "npm test 2>&1 | tail" passing, reads Passed,
+ * and a full "npm test" replaces an earlier "npm test -- test/a.test.ts".
  */
 export function collectChecks(items: readonly unknown[], patterns: readonly string[]): SummaryCheck[] {
   const byCommand = new Map<string, SummaryCheck>();
@@ -38,9 +40,11 @@ export function collectChecks(items: readonly unknown[], patterns: readonly stri
       (passed
         ? passLine(output)
         : firstErrorLine(errorText(item.error) || output) || (exitCode !== null ? `exit code ${exitCode}` : null));
-    const key = command.trim();
-    byCommand.delete(key);
-    byCommand.set(key, { command: cut(key, 120), passed, line: line ? cut(line, 160) : null });
+    const key = checkKey(command);
+    for (const earlier of [...byCommand.keys()]) {
+      if (covers(key, earlier)) byCommand.delete(earlier);
+    }
+    byCommand.set(key, { command: cut(command.trim(), 120), passed, line: line ? cut(line, 160) : null });
   }
   return [...byCommand.values()].slice(-MAX_CHECKS);
 }
