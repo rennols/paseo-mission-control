@@ -16,12 +16,18 @@ const KIND_LABEL: Record<NeedsItem["kind"], string> = {
   permission: "Approve",
   question: "Question",
   overtime: "Over time",
+  collision: "Collision",
 };
 
 function kindColor(theme: PluginTheme, kind: NeedsItem["kind"]): string {
   if (kind === "stuck") return theme.colors.statusDanger;
   if (kind === "overtime") return theme.colors.accent;
   return theme.colors.statusWarning;
+}
+
+/** Cards with a Send a hint box: the hint becomes the agent's next prompt, sent on click. */
+function hintable(item: NeedsItem): boolean {
+  return item.kind === "stuck" || item.kind === "collision";
 }
 
 export function NeedsCard({
@@ -165,7 +171,7 @@ export function NeedsCard({
         </>
       )}
 
-      {item.kind === "stuck" && hintOpen ? (
+      {hintable(item) && hintOpen ? (
         <View style={{ gap: 8 }}>
           <TextInput
             style={styles.input}
@@ -173,7 +179,7 @@ export function NeedsCard({
             autoFocus
             value={hintText}
             onChangeText={setHintText}
-            placeholder="Tell the agent what to try instead"
+            placeholder={item.kind === "collision" ? "Tell the agent how to avoid the overlap" : "Tell the agent what to try instead"}
             placeholderTextColor={theme.colors.foregroundMuted}
             accessibilityLabel={`Hint for ${item.agentTitle}`}
           />
@@ -191,9 +197,9 @@ export function NeedsCard({
         </View>
       ) : null}
 
-      {item.kind !== "permission" && !(item.kind === "stuck" && hintOpen) ? (
+      {item.kind !== "permission" && !(hintable(item) && hintOpen) ? (
         <View style={styles.actions}>
-          {item.kind === "stuck" ? <Button theme={theme} primary label="Send a hint" onPress={() => setHintOpen(true)} /> : null}
+          {hintable(item) ? <Button theme={theme} primary label="Send a hint" onPress={() => setHintOpen(true)} /> : null}
           {item.kind === "overtime" ? (
             <Button
               theme={theme}
@@ -204,7 +210,7 @@ export function NeedsCard({
             />
           ) : null}
           {openChat}
-          {item.kind === "stuck" || (item.kind === "question" && item.questionSource === "text") ? (
+          {item.kind === "stuck" || item.kind === "collision" || (item.kind === "question" && item.questionSource === "text") ? (
             <Button
               theme={theme}
               label="Dismiss"

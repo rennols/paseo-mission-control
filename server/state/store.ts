@@ -18,6 +18,19 @@ import type { PluginLogger } from "../log";
 const FEATURE = "state";
 const WRITE_DELAY_MS = 250;
 
+export const RadarAgentSchema = z.object({
+  /** The worktree the snapshots were taken in. */
+  root: z.string(),
+  /** The repository's shared git directory: same value for every worktree of one repo. */
+  commonDir: z.string(),
+  /** Worktree tree at the start of the first turn Mission Control saw. */
+  baseTree: z.string(),
+  /** Worktree tree at the end of the latest turn. */
+  headTree: z.string(),
+  updatedAt: z.number(),
+});
+export type RadarAgent = z.output<typeof RadarAgentSchema>;
+
 export const StateSchema = z.object({
   version: z.literal(1),
   needs: z.array(NeedsItemSchema).default([]),
@@ -29,6 +42,16 @@ export const StateSchema = z.object({
   inbox: z.array(InboxItemSchema).default([]),
   /** Recent turn summaries, newest last (PRD data model: copy in state file). Feeds the review inbox later. */
   summaries: z.array(TurnSummarySchema).default([]),
+  /** Collision radar (./radar): each agent's starting and latest worktree tree, and card memory. */
+  radar: z
+    .object({
+      agents: z.record(z.string(), RadarAgentSchema).default({}),
+      /** Files listed on each open collision card, by pair key. */
+      shown: z.record(z.string(), z.string()).default({}),
+      /** Files listed when the user dismissed a pair's card, by pair key. */
+      dismissed: z.record(z.string(), z.string()).default({}),
+    })
+    .default({ agents: {}, shown: {}, dismissed: {} }),
   /** Local counters for the success metrics (PRD: Success metrics). */
   metrics: z
     .object({

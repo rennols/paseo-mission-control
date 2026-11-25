@@ -16,6 +16,12 @@ export const watchdogSettings = defineSettings({
     idleTurns: z.number().int().min(2).max(50).default(5),
     /** A run longer than this raises Over time. */
     timeLimitMinutes: z.number().int().min(5).max(24 * 60).default(45),
+    /**
+     * Collision radar: "lines" flags two agents whose edits touch the same or adjacent lines of a
+     * file (what git would report as a conflict), "files" any file both changed, "off" nothing.
+     * Added after version 1 shipped; old documents read the default.
+     */
+    collisionRadar: z.enum(["lines", "files", "off"]).default("lines"),
   }),
 });
 

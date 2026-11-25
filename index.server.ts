@@ -25,6 +25,7 @@ import { buildReport } from "./server/report/model";
 import { createTaskQueue } from "./server/queue/queue";
 import { createWorkFeed } from "./server/queue/work-feed";
 import { resolveStateDirectory } from "./server/paths";
+import { createRadar } from "./server/radar/radar";
 import { openStateStore } from "./server/state/store";
 import { createWatchdog } from "./server/watchdog/watchdog";
 
@@ -52,6 +53,7 @@ export default function contribute(server: PluginServerContext) {
     if (next.status === "ready") {
       settings = next.values;
       log.info("settings", "Watchdog settings changed", settings);
+      radar.modeChanged(settings.collisionRadar);
     }
   });
 
@@ -92,7 +94,19 @@ export default function contribute(server: PluginServerContext) {
     log.info("settings", "Chat settings changed", { summaryCard: chat.summaryCard, quickReplies: chat.quickReplies, replies: chat.replies.length, savedPrompts: chat.savedPrompts, prompts: chat.prompts.length });
     for (const listener of chatListeners) listener(chat);
   });
-  const summaries = createSummaryService(paseo, store, () => chat, resolveStateDirectory(), log, () => work.changed());
+  const radar = createRadar(paseo, registry, needs, store, () => settings.collisionRadar, log);
+  const summaries = createSummaryService(
+    paseo,
+    store,
+    () => chat,
+    resolveStateDirectory(),
+    log,
+    (summary, root) => {
+      work.changed();
+      radar.noteTurn(summary, root);
+    },
+    () => settings.collisionRadar !== "off",
+  );
 
   const watchdog = createWatchdog(paseo, registry, needs, store, () => settings, log);
   const actions = createNeedsActions(
@@ -101,6 +115,7 @@ export default function contribute(server: PluginServerContext) {
     (agentId) => watchdog.resetCounters(agentId),
     (agentId) => registry.get(LOCAL, agentId)?.title ?? "The agent",
     log,
+    (key) => radar.dismissed(key),
   );
 
   const catalog = createCatalog();
@@ -238,6 +253,7 @@ export default function contribute(server: PluginServerContext) {
     stopQueueSettings();
     watchdog.stop();
     summaries.stop();
+    radar.stop();
     stopSettings();
     stopChatSettings();
     chatListeners.clear();

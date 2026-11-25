@@ -12,7 +12,7 @@ import type { StateStore } from "../state/store";
 
 const KEEP_RESOLVED_MS = 10 * 60_000;
 const FORGET_RESOLVED_MS = 24 * 60 * 60_000;
-const URGENCY: Record<NeedsKind, number> = { permission: 0, question: 1, stuck: 2, overtime: 3 };
+const URGENCY: Record<NeedsKind, number> = { permission: 0, question: 1, stuck: 2, overtime: 3, collision: 4 };
 
 export interface PendingRequest {
   requestId: string;
@@ -37,6 +37,22 @@ export interface NeedsStore {
     requestId: string | null,
   ): void;
   raise(agentId: string, agentTitle: string, kind: "stuck" | "overtime", title: string, detail: string | null): NeedsItem;
+  /**
+   * Opens or updates the collision card for one agent pair (`key`). `agentId` is the agent whose
+   * turn found the overlap; `relatedAgentIds` the other one.
+   */
+  raiseKeyed(
+    key: string,
+    agentId: string,
+    agentTitle: string,
+    relatedAgentIds: string[],
+    title: string,
+    detail: string | null,
+  ): NeedsItem;
+  /** The open card for a key, if any. */
+  openKeyed(key: string): NeedsItem | undefined;
+  /** Open collision cards that name this agent, as the main or a related agent. */
+  openInvolving(agentId: string, kind: NeedsKind): NeedsItem[];
   resolve(itemId: string, resolution: string): NeedsItem | undefined;
   resolveFor(agentId: string, kinds: NeedsKind[] | "all", resolution: string): void;
   /** Agent titles change after creation (Paseo names agents from the first prompt). */
@@ -57,8 +73,19 @@ export function createNeedsStore(store: StateStore, now: () => number = Date.now
     return items().filter((item) => item.agentId === agentId && item.resolvedAt === null && (!kind || item.kind === kind));
   }
 
-  function create(partial: Omit<NeedsItem, "id" | "openedAt" | "resolvedAt" | "resolution">): NeedsItem {
-    const item: NeedsItem = { ...partial, id: randomUUID(), openedAt: now(), resolvedAt: null, resolution: null };
+  function create(
+    partial: Omit<NeedsItem, "id" | "openedAt" | "resolvedAt" | "resolution" | "relatedAgentIds" | "key"> &
+      Partial<Pick<NeedsItem, "relatedAgentIds" | "key">>,
+  ): NeedsItem {
+    const item: NeedsItem = {
+      relatedAgentIds: [],
+      key: null,
+      ...partial,
+      id: randomUUID(),
+      openedAt: now(),
+      resolvedAt: null,
+      resolution: null,
+    };
     items().push(item);
     return item;
   }
@@ -167,6 +194,34 @@ export function createNeedsStore(store: StateStore, now: () => number = Date.now
       changed();
       return item;
     },
+
+    raiseKeyed(key, agentId, agentTitle, relatedAgentIds, title, detail) {
+      const existing = items().find((item) => item.key === key && item.resolvedAt === null);
+      if (existing) {
+        const same =
+          existing.agentId === agentId &&
+          existing.title === title &&
+          existing.detail === detail &&
+          existing.relatedAgentIds.join("|") === relatedAgentIds.join("|");
+        if (!same) {
+          existing.agentId = agentId;
+          existing.agentTitle = agentTitle;
+          existing.relatedAgentIds = relatedAgentIds;
+          existing.title = title;
+          existing.detail = detail;
+          changed();
+        }
+        return existing;
+      }
+      const item = create({ agentId, agentTitle, kind: "collision", title, detail, requests: [], options: [], questionSource: null, relatedAgentIds, key });
+      changed();
+      return item;
+    },
+
+    openKeyed: (key) => items().find((item) => item.key === key && item.resolvedAt === null),
+
+    openInvolving: (agentId, kind) =>
+      items().filter((item) => item.resolvedAt === null && item.kind === kind && (item.agentId === agentId || item.relatedAgentIds.includes(agentId))),
 
     resolve(itemId, resolution) {
       const item = items().find((candidate) => candidate.id === itemId);

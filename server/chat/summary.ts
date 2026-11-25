@@ -60,9 +60,12 @@ export function createSummaryService(
   settings: () => ChatSettings,
   stateDirectory: string,
   log: PluginLogger,
-  /** Called after a summary is stored (the overnight report reads them). */
-  onSaved: () => void = () => undefined,
+  /** Called after a summary is stored (the overnight report and the collision radar read them). */
+  onSaved: (summary: TurnSummary, root: string | null) => void = () => undefined,
+  /** Snapshot turns even with the card off (the collision radar reads the trees). */
+  alsoTrack: () => boolean = () => false,
 ): SummaryService {
+  const tracking = () => settings().summaryCard || alsoTrack();
   const starts = new Map<string, TurnStart>();
   const scratch = path.join(stateDirectory, "snapshots");
 
@@ -78,12 +81,12 @@ export function createSummaryService(
     });
   }
 
-  function remember(summary: TurnSummary): void {
+  function remember(summary: TurnSummary, root: string | null): void {
     const list = store.state.summaries.filter((entry) => !(entry.agentId === summary.agentId && entry.turnId === summary.turnId));
     list.push(summary);
     store.state.summaries = list.slice(-KEPT_SUMMARIES);
     store.changed();
-    onSaved();
+    onSaved(summary, root);
   }
 
   async function summarise(
@@ -137,8 +140,8 @@ export function createSummaryService(
     });
     // Turns with no changes and no checks are stored too (no card), so the overnight report can
     // say "No file changes" from git instead of guessing.
-    if (summary.filesTracked || deservesCard(summary)) remember(summary);
-    if (!deservesCard(summary)) return;
+    if (summary.filesTracked || deservesCard(summary)) remember(summary, after?.root ?? null);
+    if (!deservesCard(summary) || !current.summaryCard) return;
     await paseo.agents.ref(agentId).timeline.append({
       type: "plugin",
       id: rowId(turnId),
@@ -150,7 +153,7 @@ export function createSummaryService(
 
   const removers = [
     adapter.addHook("agent.turn.before", FEATURE, async ({ agent }) => {
-      if (agent.background || !settings().summaryCard || !agent.cwd) {
+      if (agent.background || !tracking() || !agent.cwd) {
         starts.delete(agent.id);
         return;
       }
@@ -160,7 +163,7 @@ export function createSummaryService(
     adapter.addHook("agent.turn.after", FEATURE, async ({ agent, turnId, outcome }) => {
       const start = starts.get(agent.id);
       starts.delete(agent.id);
-      if (agent.background || !settings().summaryCard || !turnId || !agent.cwd) return;
+      if (agent.background || !tracking() || !turnId || !agent.cwd) return;
       const endedAt = Date.now();
       // Taken at once (after the handler returns), so the next turn's edits can't leak in.
       const after = start ? snapshot(agent.cwd) : Promise.resolve(null);

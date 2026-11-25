@@ -57,7 +57,8 @@ export const AgentRowSchema = z.object({
 });
 export type AgentRow = z.output<typeof AgentRowSchema>;
 
-export const NeedsKindSchema = z.enum(["stuck", "permission", "question", "overtime"]);
+/** Collision: two agents on this host edit the same lines of a file in different worktrees (radar). */
+export const NeedsKindSchema = z.enum(["stuck", "permission", "question", "overtime", "collision"]);
 export type NeedsKind = z.output<typeof NeedsKindSchema>;
 
 export const NeedsOptionSchema = z.object({ label: z.string(), description: z.string().optional() });
@@ -79,6 +80,10 @@ export const NeedsItemSchema = z.object({
   resolvedAt: z.number().nullable(),
   /** One line saying what happened, shown when the card collapses. */
   resolution: z.string().nullable(),
+  /** Collision: the other agent(s) in the overlap. Their workspace rows get the badge too. */
+  relatedAgentIds: z.array(z.string()).default([]),
+  /** Collision: one card per agent pair, keyed `collision:<agent>|<agent>`. Null for other kinds. */
+  key: z.string().nullable().default(null),
 });
 export type NeedsItem = z.output<typeof NeedsItemSchema>;
 
@@ -132,7 +137,10 @@ export const sendHint = defineRpc({
   output: ActionResult,
 });
 
-/** Dismiss a card the user thinks is wrong. Counted for the false-flag metric. */
+/**
+ * Dismiss a card the user thinks is wrong. Counted for the false-flag metric. A dismissed collision
+ * stays quiet until the overlap reaches a file it didn't list.
+ */
 export const dismissNeed = defineRpc({
   name: "needs.dismiss",
   input: z.object({ itemId: z.string() }),
@@ -149,7 +157,7 @@ export const extendTime = defineRpc({
 /** One badge on a sidebar workspace (branch) row: an open Needs you kind for agents in it. */
 export const RowBadgeSchema = z.object({
   kind: NeedsKindSchema,
-  /** Short text on the badge: "stuck", "approve", "question", "over 45m"; "2 stuck" for two agents. */
+  /** Short text on the badge: "stuck", "approve", "question", "over 45m", "overlap"; "2 stuck" for two agents. */
   label: z.string(),
   /** Read by screen readers, e.g. "Mission Control: 1 agent waiting for approval". */
   description: z.string(),
