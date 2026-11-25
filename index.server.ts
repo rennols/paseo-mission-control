@@ -1,15 +1,94 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
-import { registerHookLogger } from "./server/debug/hook-logger";
+import { dismissNeed, extendTime, liveWatch, needsCountWatch, respondPermission, sendHint } from "./shared/live";
+import { DEFAULT_WATCHDOG_SETTINGS, watchdogSettings, type WatchdogSettings } from "./shared/settings";
+import { createFeed } from "./server/live/feed";
+import { createHostsService } from "./server/live/hosts";
+import { LOCAL, createRegistry } from "./server/live/registry";
 import { log } from "./server/log";
+import { createNeedsActions } from "./server/needs/actions";
+import { createNeedsStore } from "./server/needs/needs";
 import { createPaseoAdapter } from "./server/paseo/adapter";
+import { resolveStateDirectory } from "./server/paths";
+import { openStateStore } from "./server/state/store";
+import { createWatchdog } from "./server/watchdog/watchdog";
 
 export default function contribute(server: PluginServerContext) {
   const paseo = createPaseoAdapter(server, log);
+  const store = openStateStore(resolveStateDirectory(), log);
+  const needs = createNeedsStore(store);
+  const registry = createRegistry({
+    hasOpen: (agentId, kind) => needs.openFor(agentId, kind).length > 0,
+  });
+  const hosts = createHostsService(registry, log, () => feed.changed());
+  const feed = createFeed(registry, needs, hosts, log);
 
-  // TEMPORARY (step 0): remove once the open questions are settled.
-  const stopHookLogger = registerHookLogger(paseo, log);
+  // Settings: kept in memory, updated on save. Defaults until the first read finishes.
+  let settings: WatchdogSettings = DEFAULT_WATCHDOG_SETTINGS;
+  const settingsHandle = paseo.registerSettings(watchdogSettings);
+  void settingsHandle
+    .read()
+    .then((state) => {
+      if (state.status === "ready") settings = state.values;
+      else log.warn("settings", "Watchdog settings are invalid; using defaults", state.error);
+    })
+    .catch((error: unknown) => log.error("settings", "Could not read watchdog settings", error));
+  const stopSettings = settingsHandle.subscribe((next) => {
+    if (next.status === "ready") {
+      settings = next.values;
+      log.info("settings", "Watchdog settings changed", settings);
+    }
+  });
 
-  return () => {
-    stopHookLogger();
+  const watchdog = createWatchdog(paseo, registry, needs, store, () => settings, log);
+  const actions = createNeedsActions(
+    needs,
+    store,
+    (agentId) => watchdog.resetCounters(agentId),
+    (agentId) => registry.get(LOCAL, agentId)?.title ?? "The agent",
+    log,
+  );
+
+  // The SDK arrives with the first hook, RPC or subscription (Paseo 0.17.4 doesn't give it to the
+  // entry function). Everything that needs it starts then.
+  paseo.onPaseo("startup", (api) => {
+    hosts.start(api);
+    watchdog.start(api);
+    log.info("startup", "Mission Control running", { stateDirectory: resolveStateDirectory() });
+  });
+
+  paseo.handle(liveWatch, (_input, { paseo: api, push, signal }) => {
+    paseo.capture(api);
+    hosts.includeRemote();
+    const remove = feed.addLive(push);
+    signal.addEventListener("abort", remove, { once: true });
+  });
+  paseo.handle(needsCountWatch, (_input, { paseo: api, push, signal }) => {
+    paseo.capture(api);
+    const remove = feed.addCount(push);
+    signal.addEventListener("abort", remove, { once: true });
+  });
+  paseo.handle(respondPermission, async (input, { paseo: api }) => {
+    paseo.capture(api);
+    return actions.respondPermission(api, input);
+  });
+  paseo.handle(sendHint, async (input, { paseo: api }) => {
+    paseo.capture(api);
+    return actions.sendHint(api, input);
+  });
+  paseo.handle(dismissNeed, async (input, { paseo: api }) => {
+    paseo.capture(api);
+    return actions.dismiss(input);
+  });
+  paseo.handle(extendTime, async (input, { paseo: api }) => {
+    paseo.capture(api);
+    return actions.extendTime(input);
+  });
+
+  return async () => {
+    watchdog.stop();
+    stopSettings();
+    feed.stop();
+    await hosts.stop();
+    await store.flush();
   };
 }

@@ -2,7 +2,7 @@
 
 A Paseo plugin for supervising many coding agents in parallel across hosts. Plugin id `mission-control`.
 
-Status: step 0 (setup). The plugin currently contains only the Paseo adapter and a temporary hook logger.
+Status: P0 in progress. Built: Live tab, Needs you, watchdog, sidebar footer entry, settings screen.
 
 ## Layout
 
@@ -12,7 +12,11 @@ Status: step 0 (setup). The plugin currently contains only the Paseo adapter and
 | `server/paseo/adapter.ts` | Daemon subprocess | The one module that calls Paseo: hooks, settings, RPC handlers, SDK. |
 | `server/log.ts` | Daemon subprocess | Plugin log (`paseo plugin logs mission-control`). |
 | `server/paths.ts` | Daemon subprocess | Resolves `$PASEO_HOME/mission-control/` for state. |
-| `server/debug/hook-logger.ts` | Daemon subprocess | TEMPORARY. Logs every lifecycle hook. |
+| `server/watchdog/` | Daemon subprocess | Turn analysis, counting rules, read-only git check, hook wiring. |
+| `server/needs/` | Daemon subprocess | Needs you items and the card actions (RPC handlers). |
+| `server/live/` | Daemon subprocess | Agent registry, lanes, host directories, the snapshot feed. |
+| `server/state/store.ts` | Daemon subprocess | `$PASEO_HOME/mission-control/state.json`, temp file then rename. |
+| `test/` | Node (vitest) | Unit tests for the pure parts. Not shipped. |
 | `index.client.tsx`, `client/` | Paseo app | Renders and calls RPCs only. |
 | `shared/` | Both | `defineRpc` / `defineSubscription` contracts and plain values. |
 
@@ -21,6 +25,7 @@ Status: step 0 (setup). The plugin currently contains only the Paseo adapter and
 ```bash
 npm install
 npm run typecheck
+npm test
 paseo plugin install "$PWD"        # first time, from this folder
 paseo plugin reload mission-control  # after each change
 paseo plugin logs mission-control

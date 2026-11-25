@@ -77,10 +77,17 @@ export interface PaseoAdapter {
   defer(feature: string, label: string, work: (paseo: PaseoApi) => Promise<void>): void;
   /**
    * The plugin's Paseo SDK. Paseo creates one per plugin subprocess but only hands it to hook,
-   * RPC and subscription handlers, not to the entry function. It is null until the first of
-   * those runs. Open question, to confirm on a real daemon.
+   * RPC and subscription handlers, not to the entry function (confirmed on 0.17.4). It is null
+   * until the first of those runs.
    */
   paseo(): PaseoApi | null;
+  /**
+   * Calls `listener` once with the SDK, as soon as a hook, RPC or subscription handler has made it
+   * available (at once if it already is). Returns a remover. Listener errors are logged.
+   */
+  onPaseo(feature: string, listener: (paseo: PaseoApi) => void): () => void;
+  /** Records the SDK an RPC or subscription handler received, as hook handlers do. */
+  capture(paseo: PaseoApi): void;
   /** How many distinct SDK instances handlers have received. Expected: 1. */
   paseoInstanceCount(): number;
   readonly registerSettings: PluginServerContext["registerSettings"];
@@ -90,10 +97,37 @@ export interface PaseoAdapter {
 export function createPaseoAdapter(server: PluginServerContext, log: PluginLogger): PaseoAdapter {
   const seen = new Set<PaseoApi>();
   let current: PaseoApi | null = null;
+  const waiting = new Set<{ feature: string; listener: (paseo: PaseoApi) => void }>();
+
+  function notify(paseo: PaseoApi, entry: { feature: string; listener: (paseo: PaseoApi) => void }): void {
+    try {
+      entry.listener(paseo);
+    } catch (error) {
+      log.error(entry.feature, "SDK listener failed", error);
+    }
+  }
 
   function capture(paseo: PaseoApi): void {
     if (!seen.has(paseo)) seen.add(paseo);
+    const first = current === null;
     current = paseo;
+    if (first && waiting.size > 0) {
+      const entries = [...waiting];
+      waiting.clear();
+      // After the current handler returns, so a slow listener never holds up a hook.
+      setImmediate(() => entries.forEach((entry) => notify(paseo, entry)));
+    }
+  }
+
+  function onPaseo(feature: string, listener: (paseo: PaseoApi) => void): () => void {
+    const entry = { feature, listener };
+    if (current) {
+      const paseo = current;
+      setImmediate(() => notify(paseo, entry));
+      return () => {};
+    }
+    waiting.add(entry);
+    return () => waiting.delete(entry);
   }
 
   function defer(feature: string, label: string, work: (paseo: PaseoApi) => Promise<void>): void {
@@ -139,6 +173,8 @@ export function createPaseoAdapter(server: PluginServerContext, log: PluginLogge
     addHook,
     defer,
     paseo: () => current,
+    onPaseo,
+    capture,
     paseoInstanceCount: () => seen.size,
     registerSettings: server.registerSettings.bind(server),
     handle: server.handle.bind(server) as PluginServerContext["handle"],
