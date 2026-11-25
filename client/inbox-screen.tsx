@@ -7,9 +7,10 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc, useSubscription, type PluginScreenProps } from "@getpaseo/plugin/client";
 import { ExternalLink, ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/ui";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { commitAndOpenPr, inboxWatch, sendBack, type InboxItem, type InboxSnapshot } from "../shared/queue";
-import { Button, Pill, formatElapsed } from "./parts";
+import { Button, EmptyNote, FONT, MONO, Pill, ScreenState, SectionHeader, cardStyle, formatElapsed, pagePadding } from "./parts";
+import { plainSummary } from "./ui-format";
 
 const FILES_SHOWN = 12;
 
@@ -36,18 +37,22 @@ function InboxCard({
 
   const styles = useMemo(
     () => ({
-      card: { borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, padding: 12, gap: 8, backgroundColor: theme.colors.surface1 },
-      title: { color: theme.colors.foreground, fontWeight: "600" as const, fontSize: 14, flexShrink: 1 },
-      muted: { color: theme.colors.foregroundMuted, fontSize: 12 },
-      body: { color: theme.colors.foreground, fontSize: 13 },
-      mono: { color: theme.colors.foreground, fontSize: 12, fontFamily: "monospace" },
+      card: cardStyle(theme),
+      title: { color: theme.colors.foreground, fontWeight: "600" as const, fontSize: FONT.row, flexShrink: 1 },
+      muted: { color: theme.colors.foregroundMuted, fontSize: FONT.meta },
+      body: { color: theme.colors.foreground, fontSize: FONT.body, lineHeight: 19 },
+      mono: { color: theme.colors.foreground, fontSize: FONT.meta, fontFamily: MONO },
+      label: { color: theme.colors.foregroundMuted, fontSize: FONT.meta, fontWeight: "600" as const },
+      files: { borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8, overflow: "hidden" as const },
       input: {
         borderWidth: 1,
         borderColor: theme.colors.border,
         borderRadius: 8,
-        padding: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        fontSize: FONT.body,
         color: theme.colors.foreground,
-        backgroundColor: theme.colors.surface2,
+        backgroundColor: theme.colors.surface0,
       },
       row: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8, alignItems: "center" as const },
     }),
@@ -57,7 +62,8 @@ function InboxCard({
   if (item.state !== "open") {
     return (
       <View style={{ flexDirection: "row", gap: 6, paddingVertical: 6, paddingHorizontal: 4, flexWrap: "wrap" }} accessible accessibilityLabel={`${item.title}: ${item.resolution ?? ""}`}>
-        <Text style={styles.muted}>✓ {item.title}:</Text>
+        <Text style={[styles.muted, { color: theme.colors.statusSuccess }]}>✓</Text>
+        <Text style={[styles.muted, { color: theme.colors.foreground }]}>{item.title}:</Text>
         {item.prUrl ? (
           <ExternalLink href={item.prUrl} accessibilityLabel={`Open the PR for ${item.title}`}>
             PR opened
@@ -108,12 +114,12 @@ function InboxCard({
 
   return (
     <View style={styles.card}>
+      <Text style={styles.title} numberOfLines={2}>
+        {item.title}
+      </Text>
       <View style={styles.row}>
-        <Text style={styles.title} numberOfLines={2}>
-          {item.title}
-        </Text>
         <Pill theme={theme} label="Ready for review" color={theme.colors.statusSuccess} />
-        <Text style={[styles.muted, { marginLeft: "auto" }]}>finished {formatElapsed(now - item.finishedAt)} ago</Text>
+        <Text style={styles.muted}>finished {formatElapsed(now - item.finishedAt)} ago</Text>
       </View>
       <Text style={styles.muted} numberOfLines={2}>
         {where}
@@ -121,7 +127,7 @@ function InboxCard({
       {item.failedChecks.length > 0 ? (
         <View style={{ gap: 2 }}>
           {item.failedChecks.map((check) => (
-            <Text key={check} style={{ color: theme.colors.statusDanger, fontSize: 12 }}>
+            <Text key={check} style={{ color: theme.colors.statusDanger, fontSize: FONT.meta }}>
               ✗ Failed check: {check}
             </Text>
           ))}
@@ -129,38 +135,43 @@ function InboxCard({
       ) : null}
       {item.summary ? (
         <Text style={styles.body} numberOfLines={8}>
-          {item.summary}
+          {plainSummary(item.summary)}
         </Text>
       ) : null}
-      <Text style={styles.muted}>
+      <Text style={styles.label}>
         {item.files.length} file{item.files.length === 1 ? "" : "s"} · +{item.linesAdded} −{item.linesRemoved}
         {state ? ` · ${state}` : ""}
       </Text>
-      <View style={{ gap: 2 }}>
-        {files.map((file) => (
-          <View key={file.path} style={{ flexDirection: "row", gap: 8 }}>
-            <Text style={[styles.mono, { flexShrink: 1 }]} numberOfLines={1}>
+      <View style={styles.files}>
+        {files.map((file, index) => (
+          <View
+            key={file.path}
+            style={{ flexDirection: "row", gap: 12, paddingHorizontal: 10, paddingVertical: 6, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: theme.colors.border }}
+          >
+            <Text style={[styles.mono, { flexShrink: 1 }]} numberOfLines={1} ellipsizeMode="middle">
               {file.path}
               {file.untracked ? " (new)" : ""}
             </Text>
-            <Text style={[styles.muted, { marginLeft: "auto" }]}>{file.added === null ? "binary" : `+${file.added} −${file.removed ?? 0}`}</Text>
+            <Text style={[styles.muted, { marginLeft: "auto", fontFamily: MONO }]}>{file.added === null ? "binary" : `+${file.added} −${file.removed ?? 0}`}</Text>
           </View>
         ))}
-        {item.files.length > FILES_SHOWN ? (
-          <Button theme={theme} label={allFiles ? "Fewer files" : `All ${item.files.length} files`} onPress={() => setAllFiles(!allFiles)} />
-        ) : null}
       </View>
+      {item.files.length > FILES_SHOWN ? (
+        <View style={{ flexDirection: "row" }}>
+          <Button theme={theme} label={allFiles ? "Fewer files" : `All ${item.files.length} files`} onPress={() => setAllFiles(!allFiles)} />
+        </View>
+      ) : null}
       {item.diffExcerpt ? (
         showDiff ? (
           <ScrollView horizontal style={{ maxHeight: 320, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 8, backgroundColor: theme.colors.surface0 }}>
-            <Text style={[styles.mono, { padding: 8 }]} selectable>
+            <Text style={[styles.mono, { padding: 10, lineHeight: 18 }]} selectable>
               {item.diffExcerpt}
               {item.diffTruncated ? "\n…" : ""}
             </Text>
           </ScrollView>
         ) : null
       ) : null}
-      <Text style={styles.muted}>Commit message and PR title</Text>
+      <Text style={styles.label}>Commit message and PR title</Text>
       <TextInput accessibilityLabel="Commit message and PR title" value={title} onChangeText={setTitle} style={styles.input} />
       {noteOpen ? (
         <TextInput
@@ -195,21 +206,10 @@ function InboxCard({
 export function InboxScreen({ theme, layout, navigation, host }: PluginScreenProps) {
   const [snapshot, setSnapshot] = useState<InboxSnapshot | null>(null);
   const subscription = useSubscription(inboxWatch, {}, setSnapshot);
-  const note = { color: theme.colors.foregroundMuted, fontSize: 12 };
+  const note = { color: theme.colors.foregroundMuted, fontSize: FONT.meta, lineHeight: 17 };
 
   if (!snapshot) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 8 }}>
-        {subscription.status === "error" ? (
-          <>
-            <Text style={{ color: theme.colors.statusDanger }}>Mission Control could not connect to {host.label}.</Text>
-            <Text style={note}>{subscription.error.message}</Text>
-          </>
-        ) : (
-          <ActivityIndicator color={theme.colors.foregroundMuted} />
-        )}
-      </View>
-    );
+    return <ScreenState theme={theme} hostLabel={host.label} error={subscription.status === "error" ? subscription.error.message : null} />;
   }
 
   const open = snapshot.items.filter((item) => item.state === "open");
@@ -217,19 +217,17 @@ export function InboxScreen({ theme, layout, navigation, host }: PluginScreenPro
   const openChat = navigation ? (agentId: string) => navigation.openAgent({ agentId }) : null;
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: layout.compact ? 12 : 20, gap: 12 }}>
-      <Text style={{ color: theme.colors.foreground, fontSize: 15, fontWeight: "600" }} accessibilityRole="header">
-        Ready for review · {open.length}
-      </Text>
-      {open.length === 0 ? <Text style={note}>Nothing to review on {snapshot.hostLabel}. Agents that finish with changes in their worktree show up here.</Text> : null}
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: pagePadding(layout.compact), gap: 12 }}>
+      <SectionHeader theme={theme} title="Ready for review" count={open.length} />
+      {open.length === 0 ? (
+        <EmptyNote theme={theme}>✓ Nothing to review on {snapshot.hostLabel}. Agents that finish with changes in their worktree show up here.</EmptyNote>
+      ) : null}
       {open.map((item) => (
         <InboxCard key={item.id} theme={theme} item={item} now={snapshot.generatedAt} onOpenChat={openChat} />
       ))}
       {resolved.length > 0 ? (
         <View style={{ gap: 2 }}>
-          <Text style={{ color: theme.colors.foreground, fontSize: 13, fontWeight: "600" }} accessibilityRole="header">
-            Done in the last 24 hours
-          </Text>
+          <SectionHeader theme={theme} size="small" title="Done in the last 24 hours" count={resolved.length} />
           {resolved.map((item) => (
             <InboxCard key={item.id} theme={theme} item={item} now={snapshot.generatedAt} onOpenChat={openChat} />
           ))}

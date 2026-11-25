@@ -26,7 +26,7 @@ import {
   type TestCard,
   type ToolCardConfig,
 } from "../shared/tool-cards";
-import { Pill } from "./parts";
+import { MONO, Pill } from "./parts";
 
 type Theme = PluginTimelineItemProps["theme"];
 
@@ -45,23 +45,23 @@ function useCardStyles(theme: Theme) {
       },
       row: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8, minHeight: 20, flexWrap: "wrap" as const },
       label: { color: theme.colors.foregroundMuted, fontSize: 12 },
-      mono: { color: theme.colors.foreground, fontSize: 12, fontFamily: "monospace", flexShrink: 1 },
+      mono: { color: theme.colors.foreground, fontSize: 12, fontFamily: MONO, flexShrink: 1 },
       meta: { color: theme.colors.foregroundMuted, fontSize: 12 },
-      failName: { color: theme.colors.foreground, fontSize: 12, fontFamily: "monospace" },
+      failName: { color: theme.colors.foreground, fontSize: 12, fontFamily: MONO },
       failLine: { color: theme.colors.foregroundMuted, fontSize: 12, marginLeft: 10 },
       link: { color: theme.colors.accent, fontSize: 12 },
       output: {
         color: theme.colors.foreground,
         fontSize: 11,
-        fontFamily: "monospace",
+        fontFamily: MONO,
         backgroundColor: theme.colors.surface2,
         padding: 8,
         borderRadius: 6,
       },
-      added: { color: theme.colors.statusSuccess, fontSize: 12, fontFamily: "monospace" },
-      removed: { color: theme.colors.statusDanger, fontSize: 12, fontFamily: "monospace" },
+      added: { color: theme.colors.statusSuccess, fontSize: 12, fontFamily: MONO },
+      removed: { color: theme.colors.statusDanger, fontSize: 12, fontFamily: MONO },
       diff: { borderRadius: 6, overflow: "hidden" as const, backgroundColor: theme.colors.surface2 },
-      diffLine: { fontSize: 11, fontFamily: "monospace", paddingHorizontal: 8, color: theme.colors.foreground },
+      diffLine: { fontSize: 11, fontFamily: MONO, paddingHorizontal: 8, color: theme.colors.foreground },
     }),
     [theme],
   );

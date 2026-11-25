@@ -11,12 +11,9 @@ import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import type { SummaryCheck, SummaryFile, TurnSummary } from "../shared/chat";
 import { headline, replyStarter } from "./chat-format";
-import { Button, Pill } from "./parts";
+import { Button, MONO, Pill } from "./parts";
 
 const FILES_SHOWN = 6;
-
-
-
 
 const STATUS_TEXT: Record<SummaryFile["status"], string> = { added: "A", modified: "M", deleted: "D" };
 const STATUS_WORD: Record<SummaryFile["status"], string> = { added: "added", modified: "modified", deleted: "deleted" };
@@ -44,11 +41,11 @@ export function SummaryCard({ item, theme, agentId }: PluginTimelineItemProps<Tu
       section: { gap: 4 },
       label: { color: theme.colors.foregroundMuted, fontSize: 11, textTransform: "uppercase" as const, letterSpacing: 0.4 },
       row: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8, minHeight: 20 },
-      status: { color: theme.colors.foregroundMuted, fontSize: 12, width: 12, fontFamily: "monospace" },
-      path: { color: theme.colors.foreground, fontSize: 12, flex: 1, fontFamily: "monospace" },
-      added: { color: theme.colors.statusSuccess, fontSize: 12, fontFamily: "monospace" },
-      removed: { color: theme.colors.statusDanger, fontSize: 12, fontFamily: "monospace" },
-      command: { color: theme.colors.foreground, fontSize: 12, flex: 1, fontFamily: "monospace" },
+      status: { color: theme.colors.foregroundMuted, fontSize: 12, width: 12, fontFamily: MONO },
+      path: { color: theme.colors.foreground, fontSize: 12, flex: 1, fontFamily: MONO },
+      added: { color: theme.colors.statusSuccess, fontSize: 12, fontFamily: MONO },
+      removed: { color: theme.colors.statusDanger, fontSize: 12, fontFamily: MONO },
+      command: { color: theme.colors.foreground, fontSize: 12, flex: 1, fontFamily: MONO },
       checkLine: { color: theme.colors.foregroundMuted, fontSize: 12, marginLeft: 4 },
       link: { color: theme.colors.accent, fontSize: 12 },
       question: { color: theme.colors.foreground, fontSize: 13 },

@@ -1,7 +1,8 @@
 /**
- * Sidebar footer entry: "N need you" in amber while Needs you has open items, "All clear" in green
- * when it has none. The count is pushed by the server (`needs.count.watch`) and equals the number
- * of open cards on the host the sidebar shows.
+ * Sidebar footer entry: "N need you" on an amber badge while Needs you has open items, "All clear"
+ * on a green one when it has none (Paseo's square sidebar badge; the words carry the meaning). The
+ * count is pushed by the server (`needs.count.watch`) and equals the number of open cards on the
+ * host the sidebar shows.
  */
 import { useSubscription, type PluginSidebarItemProps } from "@getpaseo/plugin/client";
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
@@ -23,7 +24,7 @@ export function MissionControlItem({ theme, currentScreen, openScreen }: PluginS
       onPress={() => openScreen({ screenId: LIVE_SCREEN_ID })}
       trailing={
         open === null ? null : (
-          <Pill theme={theme} label={label} color={open === 0 ? theme.colors.statusSuccess : theme.colors.statusWarning} />
+          <Pill theme={theme} square label={label} color={open === 0 ? theme.colors.statusSuccess : theme.colors.statusWarning} />
         )
       }
     />
