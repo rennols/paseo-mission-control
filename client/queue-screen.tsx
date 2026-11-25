@@ -8,7 +8,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc, useSubscription, type PluginScreenProps } from "@getpaseo/plugin/client";
 import { ScrollView, TextInput, useToast } from "@getpaseo/plugin/client/ui";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { STATUS_LABEL } from "../shared/live";
 import {
   TASK_STATE_LABEL,
@@ -24,7 +24,7 @@ import {
   type TaskState,
 } from "../shared/queue";
 import { OvernightReportCard } from "./overnight-report";
-import { Button, Pill, formatElapsed, statusColor } from "./parts";
+import { Button, EmptyNote, FONT, Pill, ScreenState, SectionHeader, cardStyle, formatElapsed, pagePadding, statusColor } from "./parts";
 
 function stateColor(theme: PluginTheme, state: TaskState): string {
   switch (state) {
@@ -79,7 +79,7 @@ function ChoiceChips({
 }) {
   return (
     <View style={{ gap: 6 }}>
-      <Text style={{ color: theme.colors.foreground, fontSize: 13, fontWeight: "500" }}>{label}</Text>
+      <Text style={{ color: theme.colors.foreground, fontSize: FONT.body, fontWeight: "600" }}>{label}</Text>
       <View accessibilityRole="radiogroup" accessibilityLabel={label} style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
         {choices.map((choice) => {
           const active = choice.key === value;
@@ -91,16 +91,18 @@ function ChoiceChips({
               accessibilityLabel={choice.detail ? `${choice.label}, ${choice.detail}` : choice.label}
               onPress={() => onChange(choice.key)}
               style={{
+                minHeight: 32,
+                justifyContent: "center",
                 paddingHorizontal: 10,
-                paddingVertical: 5,
-                borderRadius: 999,
+                paddingVertical: 4,
+                borderRadius: 8,
                 borderWidth: 1,
-                borderColor: active ? theme.colors.accent : theme.colors.border,
+                borderColor: active ? theme.colors.foregroundMuted : theme.colors.border,
                 backgroundColor: active ? theme.colors.surface2 : "transparent",
                 maxWidth: "100%",
               }}
             >
-              <Text style={{ color: theme.colors.foreground, fontSize: 12 }} numberOfLines={1}>
+              <Text style={{ color: theme.colors.foreground, fontSize: FONT.meta, fontWeight: active ? "600" : "400" }} numberOfLines={1}>
                 {active ? "✓ " : ""}
                 {choice.label}
               </Text>
@@ -135,16 +137,19 @@ function AddTaskForm({ theme, snapshot, onDone }: { theme: PluginTheme; snapshot
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: 8,
-    padding: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: FONT.body,
     color: theme.colors.foreground,
-    backgroundColor: theme.colors.surface2,
+    backgroundColor: theme.colors.surface0,
   };
-  const label = { color: theme.colors.foreground, fontSize: 13, fontWeight: "500" as const };
-  const note = { color: theme.colors.foregroundMuted, fontSize: 12 };
+  const label = { color: theme.colors.foreground, fontSize: FONT.body, fontWeight: "600" as const };
+  const note = { color: theme.colors.foregroundMuted, fontSize: FONT.meta, lineHeight: 17 };
   const ready = prompt.trim().length > 0 && project !== null && profile !== null;
 
   return (
-    <View style={{ gap: 10, padding: 12, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, backgroundColor: theme.colors.surface1 }}>
+    <View style={{ ...cardStyle(theme), gap: 10 }}>
+      <SectionHeader theme={theme} title="New task" />
       <Text style={label}>Prompt</Text>
       <TextInput
         accessibilityLabel="Task prompt"
@@ -232,7 +237,7 @@ function TaskRow({
   const remove = useRpc(removeTask);
   const retry = useRpc(retryTask);
   const { busy, run } = useAction();
-  const muted = { color: theme.colors.foregroundMuted, fontSize: 12 };
+  const muted = { color: theme.colors.foregroundMuted, fontSize: FONT.meta };
   const when =
     task.state === "queued"
       ? `queued ${formatElapsed(now - task.createdAt)} ago`
@@ -242,19 +247,19 @@ function TaskRow({
           ? `for ${formatElapsed(now - task.startedAt)}`
           : null;
   return (
-    <View style={{ paddingVertical: 10, paddingHorizontal: 8, gap: 6, borderTopWidth: 1, borderTopColor: theme.colors.border }}>
+    <View style={{ paddingVertical: 10, paddingHorizontal: 4, gap: 6, borderTopWidth: 1, borderTopColor: theme.colors.border }}>
+      <Text style={{ color: theme.colors.foreground, fontSize: FONT.row, fontWeight: "500" }} numberOfLines={2}>
+        {task.title}
+      </Text>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <Text style={{ color: theme.colors.foreground, fontSize: 14, fontWeight: "500", flexShrink: 1 }} numberOfLines={2}>
-          {task.title}
-        </Text>
         <Pill theme={theme} label={TASK_STATE_LABEL[task.state]} color={stateColor(theme, task.state)} />
         {task.overLimit ? <Pill theme={theme} label="Over slot limit" color={theme.colors.statusWarning} /> : null}
+        <Text style={[muted, { flexShrink: 1 }]} numberOfLines={1}>
+          {[task.projectName, task.baseRef ? `off ${task.baseRef}` : null, task.profileLabel, when].filter(Boolean).join(" · ")}
+        </Text>
       </View>
-      <Text style={muted} numberOfLines={1}>
-        {[task.projectName, task.baseRef ? `off ${task.baseRef}` : null, task.profileLabel, when].filter(Boolean).join(" · ")}
-      </Text>
       {task.outcome ? (
-        <Text style={{ color: theme.colors.foreground, fontSize: 12 }} numberOfLines={3}>
+        <Text style={{ color: theme.colors.foreground, fontSize: FONT.body }} numberOfLines={3}>
           {task.outcome}
         </Text>
       ) : null}
@@ -286,29 +291,17 @@ export function QueueScreen({ theme, layout, navigation, host, onOpenInbox }: Pl
   const [snapshot, setSnapshot] = useState<QueueSnapshot | null>(null);
   const [adding, setAdding] = useState(false);
   const subscription = useSubscription(queueWatch, {}, setSnapshot);
-  const pad = layout.compact ? 12 : 20;
+  const pad = pagePadding(layout.compact);
   const styles = useMemo(
     () => ({
-      title: { color: theme.colors.foreground, fontSize: 15, fontWeight: "600" as const },
-      note: { color: theme.colors.foregroundMuted, fontSize: 12 },
-      card: { gap: 8, padding: 12, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, backgroundColor: theme.colors.surface1 },
+      note: { color: theme.colors.foregroundMuted, fontSize: FONT.meta, lineHeight: 17 },
+      card: cardStyle(theme),
     }),
     [theme],
   );
 
   if (!snapshot) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 8 }}>
-        {subscription.status === "error" ? (
-          <>
-            <Text style={{ color: theme.colors.statusDanger }}>Mission Control could not connect to {host.label}.</Text>
-            <Text style={styles.note}>{subscription.error.message}</Text>
-          </>
-        ) : (
-          <ActivityIndicator color={theme.colors.foregroundMuted} />
-        )}
-      </View>
-    );
+    return <ScreenState theme={theme} hostLabel={host.label} error={subscription.status === "error" ? subscription.error.message : null} />;
   }
 
   const now = snapshot.generatedAt;
@@ -322,11 +315,9 @@ export function QueueScreen({ theme, layout, navigation, host, onOpenInbox }: Pl
 
   const section = (title: string, tasks: QueueTask[], empty: string) => (
     <View style={{ gap: 4 }}>
-      <Text style={styles.title} accessibilityRole="header">
-        {title} · {tasks.length}
-      </Text>
+      <SectionHeader theme={theme} title={title} count={tasks.length} />
       {tasks.length === 0 ? (
-        <Text style={[styles.note, { paddingVertical: 6 }]}>{empty}</Text>
+        <EmptyNote theme={theme}>{empty}</EmptyNote>
       ) : (
         tasks.map((task) => <TaskRow key={task.id} theme={theme} task={task} firstQueued={task.id === firstQueuedId} now={now} onOpenChat={openChat} />)
       )}
@@ -337,15 +328,13 @@ export function QueueScreen({ theme, layout, navigation, host, onOpenInbox }: Pl
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: pad, gap: 16 }}>
       <OvernightReportCard theme={theme} onOpenChat={openChat} onOpenInbox={onOpenInbox ?? null} />
       <View style={styles.card} accessible accessibilityLabel={`${busySlots} of ${snapshot.slotLimit} slots busy on ${snapshot.hostLabel}, ${free} free`}>
-        <Text style={styles.title}>
-          Slots on {snapshot.hostLabel}: {busySlots} of {snapshot.slotLimit} busy
-        </Text>
+        <SectionHeader theme={theme} title={`Slots on ${snapshot.hostLabel}`} trailing={<Text style={styles.note}>{busySlots} of {snapshot.slotLimit} busy</Text>} />
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
           {snapshot.holders.map((holder) => (
-            <Pill key={holder.agentId} theme={theme} label={`${holder.title}: ${STATUS_LABEL[holder.status]}`} color={statusColor(theme, holder.status)} />
+            <Pill key={holder.agentId} theme={theme} shrink label={`${holder.title}: ${STATUS_LABEL[holder.status]}`} color={statusColor(theme, holder.status)} />
           ))}
           {Array.from({ length: free }, (_, index) => (
-            <Pill key={`free-${index}`} theme={theme} label="Free" color={theme.colors.border} />
+            <Pill key={`free-${index}`} theme={theme} dashed label="Free slot" color={theme.colors.border} />
           ))}
         </View>
         <Text style={styles.note}>
@@ -353,13 +342,17 @@ export function QueueScreen({ theme, layout, navigation, host, onOpenInbox }: Pl
           its slot. Change both in Settings, Plugins, Mission Control, Queue.
         </Text>
         {!snapshot.dispatcherReady ? (
-          <Text style={{ color: theme.colors.statusWarning, fontSize: 12 }}>
-            Starting up: queued tasks start once Mission Control has connected to Paseo on this host.
+          <Text style={{ color: theme.colors.foreground, fontSize: FONT.meta }}>
+            ⏳ Starting up: queued tasks start once Mission Control has connected to Paseo on this host.
           </Text>
         ) : null}
       </View>
 
-      {snapshot.catalogError ? <Text style={{ color: theme.colors.statusDanger, fontSize: 12 }}>{snapshot.catalogError}</Text> : null}
+      {snapshot.catalogError ? (
+        <Text style={{ color: theme.colors.statusDanger, fontSize: FONT.meta }} accessibilityRole="alert">
+          ⚠ {snapshot.catalogError}
+        </Text>
+      ) : null}
 
       {adding ? (
         <AddTaskForm theme={theme} snapshot={snapshot} onDone={() => setAdding(false)} />

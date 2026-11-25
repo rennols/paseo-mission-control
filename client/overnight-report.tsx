@@ -10,7 +10,7 @@ import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { TASK_STATE_LABEL, type TaskState } from "../shared/queue";
 import { overnightReportWatch, type OvernightReport, type ReportNeed, type ReportRun } from "../shared/report";
-import { Button, Pill } from "./parts";
+import { Button, FONT, MONO, Pill, cardStyle } from "./parts";
 
 function stateColor(theme: PluginTheme, state: TaskState): string {
   if (state === "finished") return theme.colors.statusSuccess;
@@ -58,8 +58,8 @@ function RunRow({
   onOpenChat: ((agentId: string) => void) | null;
   onOpenInbox: (() => void) | null;
 }) {
-  const muted = { color: theme.colors.foregroundMuted, fontSize: 12 };
-  const body = { color: theme.colors.foreground, fontSize: 12 };
+  const muted = { color: theme.colors.foregroundMuted, fontSize: FONT.meta };
+  const body = { color: theme.colors.foreground, fontSize: FONT.meta, lineHeight: 17 };
   const when = `${clock(run.startedAt)} to ${run.finishedAt ? clock(run.finishedAt) : "now"}`;
   const changes = run.changes
     ? run.changes.files === 0
@@ -67,16 +67,16 @@ function RunRow({
       : `${plural(run.changes.files, "file")} · +${run.changes.linesAdded} −${run.changes.linesRemoved}${run.changes.sample.length ? ` · ${run.changes.sample.join(", ")}${run.changes.files > run.changes.sample.length ? ", …" : ""}` : ""}`
     : null;
   return (
-    <View style={{ paddingVertical: 10, gap: 5, borderTopWidth: 1, borderTopColor: theme.colors.border }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <Text style={{ color: theme.colors.foreground, fontSize: 14, fontWeight: "500", flexShrink: 1 }} numberOfLines={2}>
-          {run.title}
-        </Text>
-        <Pill theme={theme} label={TASK_STATE_LABEL[run.state]} color={stateColor(theme, run.state)} />
-      </View>
-      <Text style={muted} numberOfLines={1}>
-        {[run.projectName, when, run.startedBy === "user" ? "started by you" : null].filter(Boolean).join(" · ")}
+    <View style={{ paddingVertical: 12, gap: 6, borderTopWidth: 1, borderTopColor: theme.colors.border }}>
+      <Text style={{ color: theme.colors.foreground, fontSize: FONT.row, fontWeight: "500" }} numberOfLines={2}>
+        {run.title}
       </Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <Pill theme={theme} label={TASK_STATE_LABEL[run.state]} color={stateColor(theme, run.state)} />
+        <Text style={[muted, { flexShrink: 1 }]} numberOfLines={1}>
+          {[run.projectName, when, run.startedBy === "user" ? "started by you" : null].filter(Boolean).join(" · ")}
+        </Text>
+      </View>
       {run.outcome ? (
         <Text style={body} numberOfLines={3}>
           {run.outcome}
@@ -90,7 +90,7 @@ function RunRow({
       {run.checks.map((check) => (
         <Text
           key={check.command}
-          style={{ color: check.passed ? theme.colors.foreground : theme.colors.statusDanger, fontSize: 12 }}
+          style={{ color: check.passed ? theme.colors.foreground : theme.colors.statusDanger, fontSize: FONT.meta, fontFamily: MONO }}
           numberOfLines={2}
           accessibilityLabel={`${check.command} ${check.passed ? "passed" : "failed"}${check.line ? `: ${check.line}` : ""}`}
         >
@@ -101,7 +101,7 @@ function RunRow({
       {run.needs.map((need) => (
         <View key={`${need.kind}:${need.label}`} style={{ flexDirection: "row", gap: 6, alignItems: "flex-start" }}>
           <View style={{ width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: needColor(theme, need) }} />
-          <Text style={{ color: theme.colors.foreground, fontSize: 12, fontWeight: "500", flexShrink: 1 }} numberOfLines={3}>
+          <Text style={{ color: theme.colors.foreground, fontSize: FONT.meta, fontWeight: "600", flexShrink: 1 }} numberOfLines={3}>
             Needs you: {need.label}
           </Text>
         </View>
@@ -143,9 +143,9 @@ export function OvernightReportCard({
   useSubscription(overnightReportWatch, {}, setReport);
   const styles = useMemo(
     () => ({
-      card: { gap: 6, padding: 12, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, backgroundColor: theme.colors.surface1 },
-      title: { color: theme.colors.foreground, fontSize: 15, fontWeight: "600" as const },
-      note: { color: theme.colors.foregroundMuted, fontSize: 12 },
+      card: { ...cardStyle(theme), gap: 6 },
+      title: { color: theme.colors.foreground, fontSize: FONT.title, fontWeight: "600" as const },
+      note: { color: theme.colors.foregroundMuted, fontSize: FONT.meta, lineHeight: 17 },
     }),
     [theme],
   );
@@ -191,12 +191,12 @@ export function OvernightReportCard({
           <Text style={[styles.title, { flexShrink: 1 }]} accessibilityRole="header">
             {heading}
           </Text>
-          <Text style={[styles.note, { marginLeft: "auto" }]}>{open ? "Hide ▴" : "Show ▾"}</Text>
+          <Text style={[styles.note, { marginLeft: "auto", color: theme.colors.foreground }]}>{open ? "Hide runs ▴" : "Show runs ▾"}</Text>
         </View>
         <Text style={styles.note}>
           {range} on {report.hostLabel}
         </Text>
-        <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>{summary}</Text>
+        <Text style={{ color: theme.colors.foreground, fontSize: FONT.body, lineHeight: 19 }}>{summary}</Text>
       </Pressable>
       {open ? report.runs.map((run) => <RunRow key={run.taskId} theme={theme} run={run} onOpenChat={onOpenChat} onOpenInbox={onOpenInbox} />) : null}
     </View>

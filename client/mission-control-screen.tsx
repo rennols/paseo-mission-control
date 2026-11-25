@@ -9,6 +9,7 @@ import { Pressable, Text, View } from "react-native";
 import { workCountWatch } from "../shared/queue";
 import { InboxScreen } from "./inbox-screen";
 import { LiveScreen } from "./live-screen";
+import { FONT, tint } from "./parts";
 import { QueueScreen } from "./queue-screen";
 
 type Tab = "live" | "queue" | "inbox";
@@ -20,10 +21,10 @@ export function MissionControlScreen(props: PluginScreenProps) {
   const [counts, setCounts] = useState<{ queued: number; review: number } | null>(null);
   useSubscription(workCountWatch, {}, setCounts);
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "live", label: "Live" },
-    { key: "queue", label: counts ? `Queue · ${counts.queued}` : "Queue" },
-    { key: "inbox", label: counts ? `Review inbox · ${counts.review}` : "Review inbox" },
+  const tabs: { key: Tab; label: string; count: number | null }[] = [
+    { key: "live", label: "Live", count: null },
+    { key: "queue", label: "Queue", count: counts ? counts.queued : null },
+    { key: "inbox", label: "Review inbox", count: counts ? counts.review : null },
   ];
 
   return (
@@ -33,9 +34,10 @@ export function MissionControlScreen(props: PluginScreenProps) {
         style={{
           flexDirection: "row",
           flexWrap: "wrap",
+          alignItems: "center",
           gap: 4,
-          paddingHorizontal: layout.compact ? 8 : 16,
-          paddingTop: 8,
+          paddingHorizontal: layout.compact ? 8 : 12,
+          paddingVertical: 6,
           borderBottomWidth: 1,
           borderBottomColor: theme.colors.border,
         }}
@@ -47,18 +49,24 @@ export function MissionControlScreen(props: PluginScreenProps) {
               key={item.key}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
-              accessibilityLabel={item.label}
+              accessibilityLabel={item.count === null ? item.label : `${item.label}, ${item.count}`}
               onPress={() => setTab(item.key)}
-              style={{
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderBottomWidth: 2,
-                borderBottomColor: active ? theme.colors.accent : "transparent",
-              }}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                minHeight: 32,
+                paddingHorizontal: 11,
+                borderRadius: 7,
+                backgroundColor: active ? theme.colors.surface2 : pressed ? tint(theme.colors.foreground, 0.06) : "transparent",
+              })}
             >
-              <Text style={{ color: active ? theme.colors.foreground : theme.colors.foregroundMuted, fontSize: 13, fontWeight: active ? "600" : "400" }}>
+              <Text style={{ color: active ? theme.colors.foreground : theme.colors.foregroundMuted, fontSize: FONT.body, fontWeight: active ? "600" : "500" }}>
                 {item.label}
               </Text>
+              {item.count === null ? null : (
+                <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta, fontVariant: ["tabular-nums"] }}>{item.count}</Text>
+              )}
             </Pressable>
           );
         })}

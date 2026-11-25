@@ -11,6 +11,7 @@ import { Text, TextInput, View } from "react-native";
 import { DEFAULT_CHAT_SETTINGS, chatSettings, type ChatSettings } from "../shared/chat";
 import { formatPrompts, parsePrompts } from "../shared/prompts";
 import { formatReplies, parsePatterns, parseReplies } from "./chat-format";
+import { MONO } from "./parts";
 
 /**
  * A multi-line text field in a settings card. Paseo's SettingsInput is one line in 0.17.4, which
@@ -39,7 +40,7 @@ function MultilineField(props: {
           minHeight: props.minHeight,
           color: theme.colors.foreground,
           backgroundColor: theme.colors.surface2,
-          fontFamily: "monospace",
+          fontFamily: MONO,
           fontSize: 13,
           textAlignVertical: "top",
         }}

@@ -9,7 +9,8 @@ import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { dismissNeed, extendTime, respondPermission, sendHint, type ActionResult, type NeedsItem } from "../shared/live";
 import { EXTEND_MINUTES } from "../shared/settings";
-import { Button, Pill, formatElapsed } from "./parts";
+import { Button, FONT, MONO, Pill, cardStyle, formatElapsed } from "./parts";
+import { presentRequest } from "./ui-format";
 
 const KIND_LABEL: Record<NeedsItem["kind"], string> = {
   stuck: "Stuck",
@@ -52,22 +53,21 @@ export function NeedsCard({
 
   const styles = useMemo(
     () => ({
-      card: {
+      card: { ...cardStyle(theme), borderLeftWidth: 3, borderLeftColor: kindColor(theme, item.kind) },
+      header: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
+      agent: { color: theme.colors.foreground, fontWeight: "600" as const, fontSize: FONT.row, flexShrink: 1, minWidth: 0 },
+      age: { color: theme.colors.foregroundMuted, fontSize: FONT.meta, marginLeft: "auto" as const, flexShrink: 0 },
+      title: { color: theme.colors.foreground, fontSize: FONT.body, lineHeight: 19 },
+      code: {
+        backgroundColor: theme.colors.surface0,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        borderLeftWidth: 3,
-        borderLeftColor: kindColor(theme, item.kind),
-        borderRadius: 10,
-        padding: 12,
-        gap: 8,
-        backgroundColor: theme.colors.surface1,
+        borderRadius: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
       },
-      header: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8, flexWrap: "wrap" as const },
-      agent: { color: theme.colors.foreground, fontWeight: "600" as const, fontSize: 14, flexShrink: 1 },
-      age: { color: theme.colors.foregroundMuted, fontSize: 12, marginLeft: "auto" as const },
-      title: { color: theme.colors.foreground, fontSize: 13 },
-      detail: { color: theme.colors.foregroundMuted, fontSize: 12, fontFamily: "monospace" },
-      option: { color: theme.colors.foregroundMuted, fontSize: 12 },
+      detail: { color: theme.colors.foreground, fontSize: FONT.meta, lineHeight: 18, fontFamily: MONO },
+      option: { color: theme.colors.foregroundMuted, fontSize: FONT.meta },
       actions: { flexDirection: "row" as const, flexWrap: "wrap" as const, gap: 8 },
       request: { gap: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: theme.colors.border },
       input: {
@@ -80,8 +80,8 @@ export function NeedsCard({
         backgroundColor: theme.colors.surface2,
         textAlignVertical: "top" as const,
       },
-      resolved: { flexDirection: "row" as const, gap: 6, paddingVertical: 6, paddingHorizontal: 4 },
-      resolvedText: { color: theme.colors.foregroundMuted, fontSize: 12, flexShrink: 1 },
+      resolved: { flexDirection: "row" as const, gap: 8, paddingVertical: 6, paddingHorizontal: 4 },
+      resolvedText: { color: theme.colors.foregroundMuted, fontSize: FONT.meta, lineHeight: 17, flexShrink: 1 },
     }),
     [theme, item.kind],
   );
@@ -101,9 +101,9 @@ export function NeedsCard({
   if (item.resolvedAt !== null) {
     return (
       <View style={styles.resolved} accessible accessibilityLabel={`${item.agentTitle}: ${item.resolution ?? "Resolved"}`}>
-        <Text style={styles.resolvedText}>✓</Text>
+        <Text style={[styles.resolvedText, { color: theme.colors.statusSuccess }]}>✓</Text>
         <Text style={styles.resolvedText} numberOfLines={2}>
-          {item.agentTitle}: {item.resolution ?? "Resolved."}
+          <Text style={{ color: theme.colors.foreground }}>{item.agentTitle}</Text>: {item.resolution ?? "Resolved."}
         </Text>
       </View>
     );
@@ -124,43 +124,54 @@ export function NeedsCard({
       </View>
 
       {item.kind === "permission" ? (
-        item.requests.map((request, index) => (
-          <View key={request.requestId} style={index === 0 ? { gap: 6 } : styles.request}>
-            <Text style={styles.title}>{request.title}</Text>
-            {request.detail ? (
-              <Text style={styles.detail} numberOfLines={3}>
-                {request.detail}
+        item.requests.map((request, index) => {
+          const shown = presentRequest(request.title, request.detail);
+          return (
+            <View key={request.requestId} style={index === 0 ? { gap: 6 } : styles.request}>
+              <Text style={styles.title} numberOfLines={4}>
+                {shown.title}
               </Text>
-            ) : null}
-            <View style={styles.actions}>
-              <Button
-                theme={theme}
-                primary
-                label="Allow once"
-                busy={busy === `allow-${request.requestId}`}
-                disabled={busy !== null}
-                accessibilityLabel={`Allow once: ${request.title}`}
-                onPress={() => void run(`allow-${request.requestId}`, () => respond({ itemId: item.id, requestId: request.requestId, decision: "allow" }))}
-              />
-              <Button
-                theme={theme}
-                danger
-                label="Deny"
-                busy={busy === `deny-${request.requestId}`}
-                disabled={busy !== null}
-                accessibilityLabel={`Deny: ${request.title}`}
-                onPress={() => void run(`deny-${request.requestId}`, () => respond({ itemId: item.id, requestId: request.requestId, decision: "deny" }))}
-              />
+              {shown.detail ? (
+                <View style={styles.code}>
+                  <Text style={styles.detail} numberOfLines={6}>
+                    {shown.detail}
+                  </Text>
+                </View>
+              ) : null}
+              <View style={styles.actions}>
+                <Button
+                  theme={theme}
+                  primary
+                  label="Allow once"
+                  busy={busy === `allow-${request.requestId}`}
+                  disabled={busy !== null}
+                  accessibilityLabel={`Allow once: ${request.title}`}
+                  onPress={() => void run(`allow-${request.requestId}`, () => respond({ itemId: item.id, requestId: request.requestId, decision: "allow" }))}
+                />
+                <Button
+                  theme={theme}
+                  danger
+                  label="Deny"
+                  busy={busy === `deny-${request.requestId}`}
+                  disabled={busy !== null}
+                  accessibilityLabel={`Deny: ${request.title}`}
+                  onPress={() => void run(`deny-${request.requestId}`, () => respond({ itemId: item.id, requestId: request.requestId, decision: "deny" }))}
+                />
+              </View>
             </View>
-          </View>
-        ))
+          );
+        })
       ) : (
         <>
-          <Text style={styles.title}>{item.title}</Text>
+          <Text style={styles.title} numberOfLines={4}>
+            {item.title}
+          </Text>
           {item.detail ? (
-            <Text style={styles.detail} numberOfLines={3}>
-              {item.detail}
-            </Text>
+            <View style={styles.code}>
+              <Text style={styles.detail} numberOfLines={3}>
+                {item.detail}
+              </Text>
+            </View>
           ) : null}
           {item.options.map((option) => (
             <Text key={option.label} style={styles.option}>
