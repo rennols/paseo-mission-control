@@ -64,7 +64,7 @@ export function MissionControlScreen(props: PluginScreenProps) {
         })}
       </View>
       <View style={{ flex: 1 }}>
-        {tab === "live" ? <LiveScreen {...props} /> : tab === "queue" ? <QueueScreen {...props} /> : <InboxScreen {...props} />}
+        {tab === "live" ? <LiveScreen {...props} /> : tab === "queue" ? <QueueScreen {...props} onOpenInbox={() => setTab("inbox")} /> : <InboxScreen {...props} />}
       </View>
     </View>
   );

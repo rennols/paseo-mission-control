@@ -23,6 +23,7 @@ with plugin rows would break Paseo's own folding.
 | `server/needs/` | Daemon subprocess | Needs you items and the card actions (RPC handlers). |
 | `server/live/` | Daemon subprocess | Agent registry, lanes, host directories, the snapshot feed. |
 | `server/queue/` | Daemon subprocess | Task queue, slot rules, dispatcher, unattended stop, Add task catalog. |
+| `server/report/` | Daemon subprocess | Overnight report: window and per-run rules, built from stored state only. |
 | `server/inbox/` | Daemon subprocess | Review inbox: read-only git review, commit/push/`gh pr create` on click. |
 | `server/chat/` | Daemon subprocess | Turn summaries: git snapshots per turn, checks read from the agent's own commands. |
 | `server/state/store.ts` | Daemon subprocess | `$PASEO_HOME/mission-control/state.json`, temp file then rename. |
@@ -88,3 +89,19 @@ A settings change applies to rows rendered after it; reopen a chat to redo the r
 an open Needs you card: approve, question, stuck or over 45m (the watchdog's time limit), with a count
 when several agents share one. Rows with nothing open get no badge. Hide them from the sidebar's Show
 menu ("Mission Control: Needs you"). Badges cover this host only, like Needs you.
+
+## Overnight report
+
+A card at the top of the Queue tab lists the queue runs of the overnight window (Settings, Queue;
+default 22:00 to 07:00 in the host's local time). In the morning it shows last night; during the
+night it shows tonight so far. Each run has its outcome line, what changed, the last result of each
+check the agent ran itself, and what it needs from you: an open permission, question, stuck or over
+time card, its Review inbox item, or a look at a failed or stopped run. Runs that need you come
+first. Review switches to the Review inbox; Open chat opens the agent.
+
+It is built from what Mission Control already stores (queue tasks, Review inbox items, Needs you
+cards and turn summaries); it runs no commands. "What changed" is the branch against its base when
+the run is in the Review inbox, otherwise the run's turn summaries (turns with no changes are stored
+too, with no card, so "No file changes" comes from git). Finished runs stay in the report for 24 h,
+or until you clear them from the queue list. Run start and end times show in the viewing device's
+clock; the window label is the host's.

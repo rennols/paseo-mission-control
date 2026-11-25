@@ -26,9 +26,12 @@ export const DEFAULT_WATCHDOG_SETTINGS: WatchdogSettings = watchdogSettings.sche
 /** Minutes added by the "Allow 30 more min" action on an Over time card. */
 export const EXTEND_MINUTES = 30;
 
+/** "HH:MM", 24-hour clock. */
+export const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 /**
- * Task queue limits, one document per host (PRD: Settings). The overnight window joins with the
- * overnight report (P2).
+ * Task queue limits and the overnight window, one document per host (PRD: Settings). The window
+ * is in the host's local time and feeds the overnight report (P2).
  */
 export const queueSettings = defineSettings({
   id: "queue",
@@ -39,6 +42,9 @@ export const queueSettings = defineSettings({
     slotLimit: z.number().int().min(1).max(20).default(3),
     /** A queue-started agent that changes no files for this long is interrupted to free its slot. */
     unattendedStopMinutes: z.number().int().min(15).max(24 * 60).default(60),
+    /** Overnight window for the report. Added after version 1 shipped; old documents read the defaults. */
+    overnightStart: z.string().regex(CLOCK_TIME).default("22:00"),
+    overnightEnd: z.string().regex(CLOCK_TIME).default("07:00"),
   }),
 });
 
