@@ -102,7 +102,12 @@ export default function contribute(server: PluginServerContext) {
   );
 
   const catalog = createCatalog();
-  const queue = createTaskQueue(paseo, registry, store, catalog, () => queueLimits, log);
+  const queue = createTaskQueue(paseo, registry, store, catalog, () => queueLimits, log, (agentId, resolution) => {
+    const open = needs.openFor(agentId).filter((item) => item.kind === "permission" || item.kind === "question");
+    const count = open.reduce((sum, item) => sum + Math.max(1, item.requests.length), 0);
+    if (open.length > 0) needs.resolveFor(agentId, ["permission", "question"], resolution);
+    return count;
+  });
   const inbox = createInbox(paseo, registry, store, { taskForAgent: (agentId) => queue.taskForAgent(agentId) }, log);
   const work = createWorkFeed(queue, inbox, () => hosts.self().label, log);
   const offRegistryWork = registry.onChange(() => work.changed());

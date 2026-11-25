@@ -87,6 +87,11 @@ export function createTaskQueue(
   catalog: CatalogService,
   settings: () => QueueSettings,
   log: PluginLogger,
+  /**
+   * Closes the agent's open permission and question cards with `resolution`, before the stop.
+   * Returns how many requests were open. The stop clears them in Paseo; it never approves them.
+   */
+  clearRequests: (agentId: string, resolution: string) => number = () => 0,
   now: () => number = Date.now,
 ): TaskQueue {
   const listeners = new Set<() => void>();
@@ -233,12 +238,15 @@ export function createTaskQueue(
       }
       if (!shouldStopUnattended(task, busy.has(task.agentId), at, stopMinutes)) continue;
       const minutes = minutesBetween(task.lastChangeAt ?? task.startedAt, at) ?? stopMinutes;
+      const pending = (registry.get(LOCAL, task.agentId)?.pendingPermissions ?? 0) > 0;
+      const cleared = clearRequests(task.agentId, `Cleared, not approved: the ${stopMinutes}-minute rule stopped this queue run after ${minutes} min with no file changes.`);
+      const note = pending || cleared > 0 ? `. Its open permission request was cleared by the ${stopMinutes}-minute rule, not approved` : "";
       try {
         await api.agents.ref(task.agentId).reload();
-        finish(task, "stopped", `Stopped by the watchdog after ${minutes} min with no file changes`);
+        finish(task, "stopped", `Stopped by the watchdog after ${minutes} min with no file changes${note}`);
       } catch (error) {
         // Still frees the slot: a stopped task's agent no longer counts against the limit.
-        finish(task, "stopped", `Stop failed (${error instanceof Error ? error.message : String(error)}); slot freed after ${minutes} min with no file changes`);
+        finish(task, "stopped", `Stop failed (${error instanceof Error ? error.message : String(error)}); slot freed after ${minutes} min with no file changes${note}`);
       }
     }
     if (pruneHistory(tasks(), at)) changed();
