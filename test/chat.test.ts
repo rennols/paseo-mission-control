@@ -62,6 +62,16 @@ describe("collectChecks", () => {
     const checks = collectChecks([shell("pytest", "completed", { exitCode: 1, output: "E   assert 1 == 2\n1 failed" })], DEFAULT_CHECK_PATTERNS);
     expect(checks[0]).toMatchObject({ passed: false, line: "E assert 1 == 2" });
   });
+  it("reads a failure from output that a pipe made exit 0", () => {
+    const tap = "not ok 3 - multiply\n# tests 3\n# pass 2\n# fail 1";
+    expect(collectChecks([shell("npm test 2>&1 | tail -9", "completed", { output: tap })], DEFAULT_CHECK_PATTERNS)[0]).toEqual({
+      command: "npm test",
+      passed: false,
+      line: "# fail 1",
+    });
+    expect(collectChecks([shell("npm test | tail; echo \"exit: ${PIPESTATUS[0]}\"", "completed", { output: "...\nexit: 1" })], DEFAULT_CHECK_PATTERNS)[0]?.passed).toBe(false);
+    expect(collectChecks([shell("npm test", "completed", { output: "# pass 3\n# fail 0\nexit: 0" })], DEFAULT_CHECK_PATTERNS)[0]?.passed).toBe(true);
+  });
   it("skips running calls and other tools", () => {
     expect(collectChecks([shell("npm test", "completed"), { type: "tool_call", name: "Read", status: "completed", detail: { type: "read" } }].slice(1), DEFAULT_CHECK_PATTERNS)).toEqual([]);
     expect(collectChecks([{ ...shell("npm test", "completed"), status: "running" }], DEFAULT_CHECK_PATTERNS)).toEqual([]);

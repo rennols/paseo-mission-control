@@ -61,6 +61,32 @@ export function passLine(output: string): string | null {
   return null;
 }
 
+/**
+ * Failure signs in output that exited 0, which happens when the agent pipes a check through
+ * `tail` or `grep`: a non-zero fail count, a TAP "not ok", a runner's FAIL line, or an
+ * `exit: N` the agent echoed from PIPESTATUS. Returns the line that shows it.
+ */
+export function failureInOutput(output: string): string | null {
+  const lines = output
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\u001b\[[0-9;]*m/g, "").trim())
+    .filter(Boolean);
+  const signs = [
+    /^#\s*fail\s+[1-9]\d*\b/i,
+    /\b[1-9]\d*\s+(failed|failing|failures?)\b/i,
+    /^not ok\b/i,
+    /^(FAIL|FAILED)\b/,
+    /^--- FAIL\b/,
+    /\bexit(?: code)?:?\s*[1-9]\d*\s*$/i,
+    /^test result: FAILED/i,
+  ];
+  for (const sign of signs) {
+    const line = lines.find((candidate) => sign.test(candidate));
+    if (line) return cut(line, 160);
+  }
+  return null;
+}
+
 function asRecord(value: unknown): Item | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Item) : null;
 }
@@ -80,11 +106,15 @@ export function collectChecks(items: readonly unknown[], patterns: readonly stri
     if (!command) continue;
     const detail = asRecord(item.detail);
     const exitCode = typeof detail?.exitCode === "number" ? detail.exitCode : null;
-    const passed = item.status === "completed" && (exitCode === null || exitCode === 0);
     const output = errorText(detail?.output);
-    const line = passed
-      ? passLine(output)
-      : firstErrorLine(errorText(item.error) || output) || (exitCode !== null ? `exit code ${exitCode}` : null);
+    const exitedOk = item.status === "completed" && (exitCode === null || exitCode === 0);
+    const shownFailure = exitedOk ? failureInOutput(output) : null;
+    const passed = exitedOk && shownFailure === null;
+    const line =
+      shownFailure ??
+      (passed
+        ? passLine(output)
+        : firstErrorLine(errorText(item.error) || output) || (exitCode !== null ? `exit code ${exitCode}` : null));
     const key = command.trim();
     byCommand.delete(key);
     byCommand.set(key, { command: cut(key, 120), passed, line: line ? cut(line, 160) : null });
