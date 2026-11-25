@@ -1,5 +1,6 @@
 /**
- * Settings, Plugins, Mission Control, Chat tab: summary card on or off, quick replies on or off,
+ * Settings, Plugins, Mission Control, Chat tab: summary card on or off, test and edit cards on or off,
+ * quick replies on or off,
  * the reply list, the check command patterns and the saved prompts. Stored per host through
  * `registerSettings`.
  */
@@ -127,6 +128,24 @@ export function ChatSettingsScreen({ theme }: PluginSurfaceProps) {
               setMessage(null);
               setDraft((current) => (current ? { ...current, patterns: patternsText } : current));
             }}
+          />
+        </SettingsCard>
+      </SettingsSection>
+      <SettingsSection
+        title="Test and edit cards"
+        info="A finished test command shows as a card with only the failing tests. A file edit shows as a card with the first lines of its diff. Both read only what the agent's own tool call returned. Output Mission Control can't read keeps Paseo's normal row."
+      >
+        <SettingsCard>
+          <SettingsSwitch
+            label="Show test cards"
+            hint="Uses the check commands above."
+            value={ready.values.testCards}
+            onValueChange={(testCards) => void saveNow({ ...ready.values, testCards }, testCards ? "Test cards on." : "Test cards off. Reopen a chat to see the change.")}
+          />
+          <SettingsSwitch
+            label="Show edit cards"
+            value={ready.values.editCards}
+            onValueChange={(editCards) => void saveNow({ ...ready.values, editCards }, editCards ? "Edit cards on." : "Edit cards off. Reopen a chat to see the change.")}
           />
         </SettingsCard>
       </SettingsSection>

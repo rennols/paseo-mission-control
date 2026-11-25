@@ -3,8 +3,8 @@
 A Paseo plugin for supervising many coding agents in parallel across hosts. Plugin id `mission-control`.
 
 Status: P0 in progress. Built: Live tab, Needs you, watchdog, sidebar footer entry, settings screen,
-turn summary card and quick reply pills. P1: task queue, review inbox, saved prompts (`/p`) and
-branch row badges.
+turn summary card and quick reply pills. P1: task queue, review inbox, saved prompts (`/p`),
+branch row badges, and test and edit cards.
 
 Compact explore rows are not built as a plugin feature: Paseo 0.17.4 already folds runs of tool calls
 into one expandable row (Settings → Chat → Chat display: "Collapse tool calls" or "Collapse turns").
@@ -69,6 +69,20 @@ focuses the composer; it never sends. Edit the list in Settings → Plugins → 
 clears `/p …` from the composer before the plugin runs, so an unknown name shows a toast and leaves
 the composer empty. Defaults: review, tdd, bugfix, docs. Edit them in Settings → Plugins → Mission
 Control → Chat, one prompt per `/name` line followed by its text. Per host, like quick replies.
+
+**Test and edit cards.** A client timeline transformer replaces a finished shell call that runs a
+check command (the Check commands patterns) with a test card: the command, a Passed or Failed pill,
+counts and duration, and only the failing tests with their first error line, with Show full output
+(the last 32,000 characters). It reads vitest, jest, pytest, go test, cargo test, node:test (TAP and
+spec) and mocha's counts (`shared/test-output.ts`). A finished Edit or Write becomes an edit card: the
+path relative to the agent's folder, lines added and removed, and the first 6 diff lines with Show all
+lines. The diff comes from the edit tool's own unified diff or old and new strings; the plugin never
+reads the file or runs a check. Output it can't read, running calls and failed edits keep Paseo's
+own row. The cards are built on render, so unlike the turn summary card they survive a daemon
+restart. With Paseo's Chat display set to "Collapse turns", a folded turn's line ("Read 2 files")
+doesn't count calls that became cards, and a turn whose only calls became cards doesn't fold; turn
+either card off under Settings → Plugins → Mission Control → Chat if you prefer Paseo's fold counts.
+A settings change applies to rows rendered after it; reopen a chat to redo the rows already shown.
 
 **Branch row badges.** A workspace row in Paseo's sidebar gets a short badge while an agent in it has
 an open Needs you card: approve, question, stuck or over 45m (the watchdog's time limit), with a count

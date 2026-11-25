@@ -134,7 +134,15 @@ export default function contribute(server: PluginServerContext) {
   });
   paseo.handle(chatSettingsWatch, (_input, { paseo: api, push, signal }) => {
     paseo.capture(api);
-    const send = (next: ChatSettings) => push({ quickReplies: next.quickReplies, replies: next.replies, savedPrompts: next.savedPrompts, prompts: next.prompts });
+    const send = (next: ChatSettings) => push({
+        quickReplies: next.quickReplies,
+        replies: next.replies,
+        savedPrompts: next.savedPrompts,
+        prompts: next.prompts,
+        testCards: next.testCards,
+        editCards: next.editCards,
+        checkPatterns: next.checkPatterns,
+      });
     send(chat);
     chatListeners.add(send);
     signal.addEventListener("abort", () => chatListeners.delete(send), { once: true });

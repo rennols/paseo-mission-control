@@ -1,0 +1,36 @@
+
+ RUN  v3.2.4 /work/vt
+
+ ❯ calc.test.ts (3 tests | 1 failed | 1 skipped) 10ms
+   ✓ calc > adds 1ms
+   × calc > subtracts 7ms
+     → expected 2 to be 1 // Object.is equality
+   ↓ calc > divides
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  calc.test.ts > calc > subtracts
+AssertionError: expected 2 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ calc.test.ts:4:39
+      2| describe("calc", () => {
+      3|   it("adds", () => expect(1 + 1).toBe(2));
+      4|   it("subtracts", () => expect(3 - 1).toBe(1));
+       |                                       ^
+      5|   it.skip("divides", () => {});
+      6| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed | 1 skipped (3)
+   Start at  14:28:43
+   Duration  268ms (transform 41ms, setup 0ms, collect 32ms, tests 10ms, environment 0ms, prepare 51ms)
+

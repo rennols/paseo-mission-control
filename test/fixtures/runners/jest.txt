@@ -1,0 +1,26 @@
+FAIL ./calc.test.js
+  calc
+    ✓ adds (2 ms)
+    ✕ subtracts (2 ms)
+
+  ● calc › subtracts
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 2
+
+      1 | describe("calc", () => {
+      2 |   test("adds", () => expect(1 + 1).toBe(2));
+    > 3 |   test("subtracts", () => expect(3 - 1).toBe(1));
+        |                                         ^
+      4 | });
+      5 |
+
+      at Object.toBe (calc.test.js:3:41)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 1 passed, 2 total
+Snapshots:   0 total
+Time:        0.21 s
+Ran all test suites.
