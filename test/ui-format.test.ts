@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { plainSummary, presentRequest, tint } from "../client/ui-format";
+import { buildGroups, isLong, plainSummary, presentRequest, relativeToCwd, tint } from "../client/ui-format";
+import type { AgentRow } from "../shared/live";
 
 describe("tint", () => {
   it("turns hex and rgb theme colours into rgba", () => {
@@ -33,5 +34,54 @@ describe("plainSummary", () => {
 
   it("keeps code inside fences as it is", () => {
     expect(plainSummary("Added:\n\n```js\n/**\n * @param {number} a\n */\n```\n- done")).toBe("Added:\n\n/**\n * @param {number} a\n */\n• done");
+  });
+});
+
+describe("relativeToCwd", () => {
+  it("shows paths inside the agent's folder from there", () => {
+    expect(relativeToCwd("Write /tmp/ph/worktrees/x/perm-a/CHANGELOG.md", "/tmp/ph/worktrees/x/perm-a")).toBe("Write CHANGELOG.md");
+    expect(relativeToCwd("Edit /etc/hosts", "/tmp/ph/worktrees/x/perm-a")).toBe("Edit /etc/hosts");
+    expect(relativeToCwd("Write /a/b", null)).toBe("Write /a/b");
+  });
+});
+
+describe("buildGroups", () => {
+  const agent = (id: string, workspaceKey: string, status: AgentRow["status"], parentAgentId: string | null = null): AgentRow => ({
+    id,
+    serverId: "s",
+    hostLabel: "vm",
+    title: id,
+    provider: "claude",
+    workspaceKey,
+    workspaceName: workspaceKey,
+    branch: null,
+    parentAgentId,
+    status,
+    since: 0,
+    linesAdded: null,
+    linesRemoved: null,
+    latestActivity: null,
+    lane: [],
+    marks: [],
+    laneDescription: "",
+    watched: true,
+  });
+
+  it("puts groups with an agent that needs you first, then by name", () => {
+    const groups = buildGroups([agent("a", "alpha", "idle"), agent("b", "beta", "waiting"), agent("c", "gamma", "stuck"), agent("d", "delta", "closed")]);
+    expect(groups.map((group) => group.key)).toEqual(["gamma", "beta", "alpha", "delta"]);
+  });
+
+  it("nests workers under the agent that started them", () => {
+    const groups = buildGroups([agent("lead", "w", "working"), agent("worker", "w", "idle", "lead")]);
+    expect(groups[0]?.rows.map(({ row, depth }) => `${row.id}:${depth}`)).toEqual(["lead:0", "worker:1"]);
+  });
+});
+
+describe("isLong", () => {
+  it("flags messages past a 4-line clamp", () => {
+    expect(isLong("short")).toBe(false);
+    expect(isLong("x".repeat(200))).toBe(true);
+    expect(isLong("1\n2\n3\n4\n5")).toBe(true);
   });
 });

@@ -9,56 +9,11 @@ import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { STATUS_LABEL, liveWatch, type AgentRow, type AgentStatus, type LiveSnapshot } from "../shared/live";
 import { Lane, LaneLegend } from "./lane";
+import { buildGroups } from "./ui-format";
 import { NeedsCard } from "./needs-card";
-import { EmptyNote, FONT, ScreenState, SectionHeader, StatusPill, formatElapsed, pagePadding, statusColor, tint } from "./parts";
+import { EmptyNote, FONT, ScreenState, SectionHeader, StatusPill, Toggle, formatElapsed, pagePadding, statusColor, tint } from "./parts";
 
 const COUNTED: AgentStatus[] = ["working", "waiting", "stuck", "idle"];
-
-interface Group {
-  key: string;
-  name: string;
-  hostLabel: string;
-  watched: boolean;
-  rows: { row: AgentRow; depth: number }[];
-}
-
-/** Workspace groups, workers nested under the agent that started them (by parentAgentId). */
-export function buildGroups(agents: readonly AgentRow[]): Group[] {
-  const byId = new Map(agents.map((agent) => [`${agent.serverId}:${agent.id}`, agent]));
-  const children = new Map<string, AgentRow[]>();
-  const roots: AgentRow[] = [];
-  for (const agent of agents) {
-    const parentKey = agent.parentAgentId ? `${agent.serverId}:${agent.parentAgentId}` : null;
-    if (parentKey && byId.has(parentKey)) {
-      const list = children.get(parentKey) ?? [];
-      list.push(agent);
-      children.set(parentKey, list);
-    } else {
-      roots.push(agent);
-    }
-  }
-  const order = (a: AgentRow, b: AgentRow) => a.title.localeCompare(b.title);
-  const groups = new Map<string, Group>();
-  for (const root of roots.sort(order)) {
-    const group = groups.get(root.workspaceKey) ?? {
-      key: root.workspaceKey,
-      name: root.workspaceName,
-      hostLabel: root.hostLabel,
-      watched: root.watched,
-      rows: [],
-    };
-    groups.set(root.workspaceKey, group);
-    const visit = (agent: AgentRow, depth: number, seen: Set<string>) => {
-      const key = `${agent.serverId}:${agent.id}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      group.rows.push({ row: agent, depth });
-      for (const child of (children.get(key) ?? []).sort(order)) visit(child, depth + 1, seen);
-    };
-    visit(root, 0, new Set());
-  }
-  return [...groups.values()].sort((a, b) => a.hostLabel.localeCompare(b.hostLabel) || a.name.localeCompare(b.name));
-}
 
 /** Fixed widths so status, changes and time line up from row to row on a desk. */
 const COL = { name: 200, status: 116, right: 64 } as const;
@@ -113,7 +68,9 @@ function AgentRowView({
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             {branch}
             {title}
-            <Text style={[num, { marginLeft: "auto" }]}>{elapsed}</Text>
+            <Text style={[num, { marginLeft: "auto", flexShrink: 0 }]} numberOfLines={1}>
+              {elapsed}
+            </Text>
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <StatusPill theme={theme} status={row.status} />
@@ -147,7 +104,9 @@ function AgentRowView({
             <Text style={[num, { color: lines ? theme.colors.foreground : theme.colors.foregroundMuted }]} accessibilityLabel={lines ?? "No file changes"}>
               {lines ?? "—"}
             </Text>
-            <Text style={num}>{elapsed}</Text>
+            <Text style={num} numberOfLines={1}>
+              {elapsed}
+            </Text>
           </View>
         </View>
       )}
@@ -190,6 +149,8 @@ function Stat({ theme, status, count, compact }: { theme: PluginTheme; status: A
 export function LiveScreen({ theme, layout, navigation, host }: PluginScreenProps) {
   const [snapshot, setSnapshot] = useState<LiveSnapshot | null>(null);
   const [hostFilter, setHostFilter] = useState<string | null>(null);
+  const [showClosed, setShowClosed] = useState(false);
+  const [showDone, setShowDone] = useState(false);
   const subscription = useSubscription(liveWatch, {}, setSnapshot);
   const compact = layout.compact;
 
@@ -219,8 +180,10 @@ export function LiveScreen({ theme, layout, navigation, host }: PluginScreenProp
   const agents = hostFilter ? snapshot.agents.filter((agent) => agent.serverId === hostFilter) : snapshot.agents;
   const counts = new Map<AgentStatus, number>();
   for (const agent of agents) counts.set(agent.status, (counts.get(agent.status) ?? 0) + 1);
-  const groups = buildGroups(agents);
+  const closedCount = agents.filter((agent) => agent.status === "closed").length;
+  const groups = buildGroups(showClosed ? agents : agents.filter((agent) => agent.status !== "closed"));
   const openNeeds = snapshot.needs.filter((item) => item.resolvedAt === null);
+  const doneNeeds = snapshot.needs.filter((item) => item.resolvedAt !== null);
   const needsVisible = hostFilter === null || hostFilter === snapshot.self.serverId;
   const openChat = navigation
     ? (serverId: string, agentId: string) => navigation.openAgent({ agentId, serverId })
@@ -239,7 +202,7 @@ export function LiveScreen({ theme, layout, navigation, host }: PluginScreenProp
           <EmptyNote theme={theme}>✓ All clear. Nothing needs you.</EmptyNote>
         ) : null}
         {needsVisible
-          ? snapshot.needs.map((item) => (
+          ? [...openNeeds, ...(showDone ? doneNeeds : [])].map((item) => (
               <NeedsCard
                 key={item.id}
                 theme={theme}
@@ -249,6 +212,14 @@ export function LiveScreen({ theme, layout, navigation, host }: PluginScreenProp
               />
             ))
           : null}
+        {needsVisible && doneNeeds.length > 0 ? (
+          <Toggle
+            theme={theme}
+            open={showDone}
+            onPress={() => setShowDone(!showDone)}
+            label={showDone ? "Hide what you handled" : `Handled in the last 10 min · ${doneNeeds.length}`}
+          />
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -257,7 +228,11 @@ export function LiveScreen({ theme, layout, navigation, host }: PluginScreenProp
     <View style={{ padding: compact ? 12 : 16, paddingTop: compact ? 0 : 8 }}>
       {groups.length === 0 ? (
         <View style={{ padding: 8 }}>
-          <EmptyNote theme={theme}>No agents on {hostFilter ? "this host" : "your hosts"} yet. Agents you start in Paseo show up here.</EmptyNote>
+          <EmptyNote theme={theme}>
+            {closedCount > 0
+              ? `No open agents on ${hostFilter ? "this host" : "your hosts"}.`
+              : `No agents on ${hostFilter ? "this host" : "your hosts"} yet. Agents you start in Paseo show up here.`}
+          </EmptyNote>
         </View>
       ) : (
         groups.map((group) => (
@@ -288,6 +263,16 @@ export function LiveScreen({ theme, layout, navigation, host }: PluginScreenProp
           </View>
         ))
       )}
+      {closedCount > 0 ? (
+        <View style={{ paddingHorizontal: 8, paddingVertical: 8 }}>
+          <Toggle
+            theme={theme}
+            open={showClosed}
+            onPress={() => setShowClosed(!showClosed)}
+            label={showClosed ? "Hide closed agents" : `Show closed agents · ${closedCount}`}
+          />
+        </View>
+      ) : null}
       {groups.length > 0 ? <LaneLegend theme={theme} /> : null}
     </View>
   );
