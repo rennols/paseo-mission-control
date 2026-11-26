@@ -6,7 +6,7 @@ import { useSettings, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { SettingsAction, SettingsCard, SettingsInput, SettingsSection } from "@getpaseo/plugin/client/ui";
 import { useEffect, useState } from "react";
 import { Text } from "react-native";
-import { CLOCK_TIME, queueSettings, type QueueSettings } from "../shared/settings";
+import { CLOCK_TIME, DEFAULT_QUEUE_SETTINGS, queueSettings, type QueueSettings } from "../shared/settings";
 
 type Field = keyof QueueSettings;
 type NumberField = "slotLimit" | "unattendedStopMinutes";
@@ -95,7 +95,7 @@ export function QueueSettingsScreen({ theme }: PluginSurfaceProps) {
           <SettingsInput
             key={field.key}
             label={fieldLabel(field)}
-            hint={field.hint}
+            hint={`${field.hint} Default ${DEFAULT_QUEUE_SETTINGS[field.key]}.`}
             error={errors[field.key]}
             initialValue={draft[field.key]}
             onChangeText={(text) => {
@@ -104,7 +104,7 @@ export function QueueSettingsScreen({ theme }: PluginSurfaceProps) {
             }}
           />
         ))}
-        <SettingsAction label={message ?? (dirty ? "Unsaved changes" : "Saved per host")} actionLabel="Save" disabled={!valid || !dirty || settings.saving} onPress={() => void save()} />
+        <SettingsAction label={message ?? (dirty ? "Unsaved changes" : "Saved on this host")} actionLabel="Save" disabled={!valid || !dirty || settings.saving} onPress={() => void save()} />
       </SettingsCard>
     </SettingsSection>
   );

@@ -24,6 +24,14 @@ export function headline(summary: TurnSummary): string {
   return parts.join(" · ");
 }
 
+/** The pill in the card header: how the turn's checks ended, in words. Null when none ran. */
+export function checksVerdict(checks: readonly { passed: boolean }[]): { label: string; failed: boolean } | null {
+  if (checks.length === 0) return null;
+  const failed = checks.filter((check) => !check.passed).length;
+  if (failed === 0) return { label: checks.length === 1 ? "Check passed" : "Checks passed", failed: false };
+  return { label: failed === 1 ? "1 check failed" : `${failed} checks failed`, failed: true };
+}
+
 /** What "Answer the question" puts in the composer. */
 export function replyStarter(question: string): string {
   return `> ${question.replace(/\s+/g, " ").trim()}\n\n`;

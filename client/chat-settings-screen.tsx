@@ -1,11 +1,11 @@
 /**
- * Settings, Plugins, Mission Control, Chat tab: summary card on or off, test and edit cards on or off,
- * quick replies on or off,
- * the reply list, the check command patterns and the saved prompts. Stored per host through
+ * Settings, Plugins, Mission Control, Chat tab: summary card, test and edit cards, check commands,
+ * quick replies and saved prompts. Switches save at once; each list has its own Save next to it,
+ * and Restore asks once before replacing a list. Stored per host through
  * `registerSettings`.
  */
 import { useSettings, type PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { SettingsAction, SettingsCard, SettingsInput, SettingsSection, SettingsSwitch } from "@getpaseo/plugin/client/ui";
+import { SettingsAction, SettingsCard, SettingsSection, SettingsSwitch } from "@getpaseo/plugin/client/ui";
 import { useEffect, useState } from "react";
 import { Text, TextInput, View } from "react-native";
 import { DEFAULT_CHAT_SETTINGS, chatSettings, type ChatSettings } from "../shared/chat";
@@ -65,12 +65,15 @@ export function ChatSettingsScreen({ theme }: PluginSurfaceProps) {
   const [draft, setDraft] = useState<{ replies: string; patterns: string; prompts: string } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [promptMessage, setPromptMessage] = useState<string | null>(null);
+  const [checkMessage, setCheckMessage] = useState<string | null>(null);
+  // Restore replaces a whole list, so it asks once before saving.
+  const [confirming, setConfirming] = useState<"checks" | "replies" | "prompts" | null>(null);
 
   useEffect(() => {
     if (settings.status === "ready" && draft === null) {
       setDraft({
         replies: formatReplies(settings.values.replies),
-        patterns: settings.values.checkPatterns.join(", "),
+        patterns: settings.values.checkPatterns.join("\n"),
         prompts: formatPrompts(settings.values.prompts),
       });
     }
@@ -103,13 +106,36 @@ export function ChatSettingsScreen({ theme }: PluginSurfaceProps) {
   const replies = parseReplies(draft.replies);
   const patterns = parsePatterns(draft.patterns);
   const patternError = patterns.length === 0 ? "Add at least one pattern." : patterns.some((p) => p.length > 80) ? "Patterns are at most 80 characters." : null;
-  const valid = replies.error === null && replies.replies.length > 0 && patternError === null;
-  const dirty =
-    formatReplies(ready.values.replies) !== formatReplies(replies.replies) ||
-    ready.values.checkPatterns.join("\n") !== patterns.join("\n");
+  const repliesError = replies.error ?? (replies.replies.length === 0 ? "Add at least one reply." : null);
+  const repliesDirty = formatReplies(ready.values.replies) !== formatReplies(replies.replies);
+  const checksDirty = ready.values.checkPatterns.join("\n") !== patterns.join("\n");
   const prompts = parsePrompts(draft.prompts);
   const promptsError = prompts.error ?? (prompts.prompts.length === 0 ? "Add at least one prompt." : null);
   const promptsDirty = formatPrompts(ready.values.prompts) !== formatPrompts(prompts.prompts);
+
+  /** The Restore row, which turns into a one-time question before anything is replaced. */
+  function restoreRows(key: "checks" | "replies" | "prompts", what: string, question: string, restore: () => void) {
+    if (confirming !== key) {
+      return <SettingsAction label={`Restore the default ${what}`} actionLabel="Restore" onPress={() => setConfirming(key)} />;
+    }
+    return (
+      <>
+        <SettingsAction
+          label={question}
+          actionLabel="Yes, restore"
+          onPress={() => {
+            setConfirming(null);
+            restore();
+          }}
+        />
+        <SettingsAction label={`Keep my ${what}`} actionLabel="Cancel" onPress={() => setConfirming(null)} />
+      </>
+    );
+  }
+
+  function savedLabel(text: string | null, isDirty: boolean, idle: string): string {
+    return text ?? (isDirty ? "Unsaved changes" : idle);
+  }
 
   return (
     <>
@@ -117,18 +143,9 @@ export function ChatSettingsScreen({ theme }: PluginSurfaceProps) {
         <SettingsCard>
           <SettingsSwitch
             label="Show turn summary cards"
+            hint="Switches save as soon as you change them."
             value={ready.values.summaryCard}
             onValueChange={(summaryCard) => void saveNow({ ...ready.values, summaryCard }, summaryCard ? "Summary cards on from the next turn." : "Summary cards off.")}
-          />
-          <SettingsInput
-            label="Check commands"
-            hint="Comma-separated. A shell command starting with one of these counts as a check."
-            error={patternError ?? undefined}
-            initialValue={draft.patterns}
-            onChangeText={(patternsText) => {
-              setMessage(null);
-              setDraft((current) => (current ? { ...current, patterns: patternsText } : current));
-            }}
           />
         </SettingsCard>
       </SettingsSection>
@@ -139,7 +156,7 @@ export function ChatSettingsScreen({ theme }: PluginSurfaceProps) {
         <SettingsCard>
           <SettingsSwitch
             label="Show test cards"
-            hint="Uses the check commands above."
+            hint="Uses the check commands below."
             value={ready.values.testCards}
             onValueChange={(testCards) => void saveNow({ ...ready.values, testCards }, testCards ? "Test cards on." : "Test cards off. Reopen a chat to see the change.")}
           />
@@ -148,6 +165,32 @@ export function ChatSettingsScreen({ theme }: PluginSurfaceProps) {
             value={ready.values.editCards}
             onValueChange={(editCards) => void saveNow({ ...ready.values, editCards }, editCards ? "Edit cards on." : "Edit cards off. Reopen a chat to see the change.")}
           />
+        </SettingsCard>
+      </SettingsSection>
+      <SettingsSection title="Check commands" info="Used by the summary card's checks line and by test cards.">
+        <SettingsCard>
+          <MultilineField
+            theme={theme}
+            label="Check commands"
+            hint="One per line. A shell command that starts with one of these counts as a check."
+            error={patternError}
+            value={draft.patterns}
+            minHeight={110}
+            onChangeText={(patternsText) => {
+              setCheckMessage(null);
+              setDraft((current) => (current ? { ...current, patterns: patternsText } : current));
+            }}
+          />
+          <SettingsAction
+            label={savedLabel(checkMessage, checksDirty, `${ready.values.checkPatterns.length} saved on this host`)}
+            actionLabel="Save"
+            disabled={patternError !== null || !checksDirty || ready.saving}
+            onPress={() => void saveNow({ ...ready.values, checkPatterns: patterns }, "Saved.", setCheckMessage)}
+          />
+          {restoreRows("checks", "check commands", `Replace your ${ready.values.checkPatterns.length} check commands with the defaults?`, () => {
+            setDraft((current) => (current ? { ...current, patterns: DEFAULT_CHAT_SETTINGS.checkPatterns.join("\n") } : current));
+            void saveNow({ ...ready.values, checkPatterns: DEFAULT_CHAT_SETTINGS.checkPatterns }, "Defaults restored.", setCheckMessage);
+          })}
         </SettingsCard>
       </SettingsSection>
       <SettingsSection title="Quick replies" info="Pills above the message box. They put text in the box and never send it.">
@@ -161,7 +204,7 @@ export function ChatSettingsScreen({ theme }: PluginSurfaceProps) {
             theme={theme}
             label="Replies"
             hint={'One per line, "Label = text". Up to 8.'}
-            error={replies.error ?? (replies.replies.length === 0 ? "Add at least one reply." : null)}
+            error={repliesError}
             value={draft.replies}
             minHeight={110}
             onChangeText={(repliesText) => {
@@ -170,32 +213,15 @@ export function ChatSettingsScreen({ theme }: PluginSurfaceProps) {
             }}
           />
           <SettingsAction
-            label={message ?? (dirty ? "Unsaved changes" : "Saved per host")}
+            label={savedLabel(message, repliesDirty, `${ready.values.replies.length} saved on this host`)}
             actionLabel="Save"
-            disabled={!valid || !dirty || ready.saving}
-            onPress={() =>
-              void saveNow({ ...ready.values, replies: replies.replies, checkPatterns: patterns }, "Saved.")
-            }
+            disabled={repliesError !== null || !repliesDirty || ready.saving}
+            onPress={() => void saveNow({ ...ready.values, replies: replies.replies }, "Saved.")}
           />
-          <SettingsAction
-            label="Restore the default replies and checks"
-            actionLabel="Restore"
-            onPress={() => {
-              setDraft((current) =>
-                current
-                  ? {
-                      ...current,
-                      replies: formatReplies(DEFAULT_CHAT_SETTINGS.replies),
-                      patterns: DEFAULT_CHAT_SETTINGS.checkPatterns.join(", "),
-                    }
-                  : current,
-              );
-              void saveNow(
-                { ...ready.values, replies: DEFAULT_CHAT_SETTINGS.replies, checkPatterns: DEFAULT_CHAT_SETTINGS.checkPatterns },
-                "Defaults restored.",
-              );
-            }}
-          />
+          {restoreRows("replies", "replies", `Replace your ${ready.values.replies.length} replies with the defaults?`, () => {
+            setDraft((current) => (current ? { ...current, replies: formatReplies(DEFAULT_CHAT_SETTINGS.replies) } : current));
+            void saveNow({ ...ready.values, replies: DEFAULT_CHAT_SETTINGS.replies }, "Defaults restored.");
+          })}
         </SettingsCard>
       </SettingsSection>
       <SettingsSection
@@ -223,19 +249,15 @@ export function ChatSettingsScreen({ theme }: PluginSurfaceProps) {
             }}
           />
           <SettingsAction
-            label={promptMessage ?? (promptsDirty ? "Unsaved changes" : `${ready.values.prompts.length} saved on this host`)}
+            label={savedLabel(promptMessage, promptsDirty, `${ready.values.prompts.length} saved on this host`)}
             actionLabel="Save"
             disabled={promptsError !== null || !promptsDirty || ready.saving}
             onPress={() => void saveNow({ ...ready.values, prompts: prompts.prompts }, "Saved.", setPromptMessage)}
           />
-          <SettingsAction
-            label="Restore the default prompts: review, tdd, bugfix, docs"
-            actionLabel="Restore"
-            onPress={() => {
-              setDraft((current) => (current ? { ...current, prompts: formatPrompts(DEFAULT_CHAT_SETTINGS.prompts) } : current));
-              void saveNow({ ...ready.values, prompts: DEFAULT_CHAT_SETTINGS.prompts }, "Defaults restored.", setPromptMessage);
-            }}
-          />
+          {restoreRows("prompts", "prompts", `Replace your ${ready.values.prompts.length} prompts with review, tdd, bugfix and docs?`, () => {
+            setDraft((current) => (current ? { ...current, prompts: formatPrompts(DEFAULT_CHAT_SETTINGS.prompts) } : current));
+            void saveNow({ ...ready.values, prompts: DEFAULT_CHAT_SETTINGS.prompts }, "Defaults restored.", setPromptMessage);
+          })}
         </SettingsCard>
       </SettingsSection>
     </>

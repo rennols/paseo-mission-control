@@ -7,7 +7,7 @@ import { DEFAULT_CHECK_PATTERNS } from "../shared/chat";
 import { checkKey, checkSegment, collectChecks, covers, matchesCheck, passLine } from "../server/chat/checks";
 import { diffSnapshots, parseNameStatus, parseNumstat, takeSnapshot } from "../server/chat/snapshot";
 import { deservesCard } from "../server/chat/summary";
-import { formatReplies, headline, parsePatterns, parseReplies, replyStarter } from "../client/chat-format";
+import { checksVerdict, formatReplies, headline, parsePatterns, parseReplies, replyStarter } from "../client/chat-format";
 
 const shell = (command: string, status: "completed" | "failed", extra: Record<string, unknown> = {}) => ({
   type: "tool_call",
@@ -244,5 +244,19 @@ describe("quick reply settings text", () => {
   });
   it("splits patterns on commas and lines", () => {
     expect(parsePatterns("npm test, pytest\ngo test")).toEqual(["npm test", "pytest", "go test"]);
+  });
+});
+
+describe("checksVerdict", () => {
+  it("is null when no checks ran", () => {
+    expect(checksVerdict([])).toBeNull();
+  });
+  it("says passed in words", () => {
+    expect(checksVerdict([{ passed: true }])).toEqual({ label: "Check passed", failed: false });
+    expect(checksVerdict([{ passed: true }, { passed: true }])).toEqual({ label: "Checks passed", failed: false });
+  });
+  it("counts failures", () => {
+    expect(checksVerdict([{ passed: false }, { passed: true }])).toEqual({ label: "1 check failed", failed: true });
+    expect(checksVerdict([{ passed: false }, { passed: false }])).toEqual({ label: "2 checks failed", failed: true });
   });
 });

@@ -6,7 +6,7 @@ import { useSettings, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { SettingsAction, SettingsCard, SettingsInput, SettingsSection, SettingsSelect } from "@getpaseo/plugin/client/ui";
 import { useEffect, useState } from "react";
 import { Text } from "react-native";
-import { watchdogSettings, type WatchdogSettings } from "../shared/settings";
+import { DEFAULT_WATCHDOG_SETTINGS, watchdogSettings, type WatchdogSettings } from "../shared/settings";
 
 type Field = Exclude<keyof WatchdogSettings, "collisionRadar">;
 
@@ -87,7 +87,7 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
           <SettingsInput
             key={field.key}
             label={`${field.label} (${field.unit})`}
-            hint={field.hint}
+            hint={`${field.hint} Default ${DEFAULT_WATCHDOG_SETTINGS[field.key]}.`}
             error={errors[field.key]}
             initialValue={draft[field.key]}
             onChangeText={(text) => {
@@ -96,9 +96,15 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
             }}
           />
         ))}
+        <SettingsAction
+          label={message ?? (dirty ? "Unsaved changes" : "Saved on this host")}
+          actionLabel="Save"
+          disabled={!valid || !dirty || settings.saving}
+          onPress={() => void save()}
+        />
         <SettingsSelect
           label="Collision radar"
-          hint="Flags two agents in different worktrees of one repo that edit the same lines (or any same file). It only flags."
+          hint="Flags two agents in different worktrees of one repo that edit the same lines (or any same file). It only flags. Saves as soon as you pick."
           value={radarMode}
           options={RADAR_OPTIONS}
           disabled={settings.saving || settings.status !== "ready"}
@@ -108,12 +114,6 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
               setMessage(saved ? "Saved. The radar uses it from the next turn." : "Not saved: the settings changed elsewhere. Reload and try again.");
             });
           }}
-        />
-        <SettingsAction
-          label={message ?? (dirty ? "Unsaved changes" : "Saved per host")}
-          actionLabel="Save"
-          disabled={!valid || !dirty || settings.saving}
-          onPress={() => void save()}
         />
       </SettingsCard>
     </SettingsSection>

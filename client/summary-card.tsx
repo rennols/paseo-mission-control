@@ -8,10 +8,10 @@
  */
 import { useComposers, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import type { SummaryCheck, SummaryFile, TurnSummary } from "../shared/chat";
-import { headline, replyStarter } from "./chat-format";
-import { Button, MONO, Pill } from "./parts";
+import { checksVerdict, headline, replyStarter } from "./chat-format";
+import { Button, MONO, Pill, Toggle } from "./parts";
 
 const FILES_SHOWN = 6;
 
@@ -47,7 +47,6 @@ export function SummaryCard({ item, theme, agentId }: PluginTimelineItemProps<Tu
       removed: { color: theme.colors.statusDanger, fontSize: 12, fontFamily: MONO },
       command: { color: theme.colors.foreground, fontSize: 12, flex: 1, fontFamily: MONO },
       checkLine: { color: theme.colors.foregroundMuted, fontSize: 12, marginLeft: 4 },
-      link: { color: theme.colors.accent, fontSize: 12 },
       question: { color: theme.colors.foreground, fontSize: 13 },
       error: { color: theme.colors.statusDanger, fontSize: 12 },
     }),
@@ -56,6 +55,19 @@ export function SummaryCard({ item, theme, agentId }: PluginTimelineItemProps<Tu
 
   const files = allFiles ? summary.files : summary.files.slice(0, FILES_SHOWN);
   const hidden = summary.files.length - files.length + summary.moreFiles;
+
+  // A failed check is what you need first, so it moves above the file list.
+  const verdict = checksVerdict(summary.checks);
+  const checksSection = (
+    <View style={styles.section}>
+      <Text style={styles.label}>Checks</Text>
+      {summary.checks.length === 0 ? (
+        <Text style={styles.meta}>No checks run</Text>
+      ) : (
+        summary.checks.map((check, index) => <CheckRow key={`${index}:${check.command}`} check={check} theme={theme} styles={styles} />)
+      )}
+    </View>
+  );
 
   async function answer(): Promise<void> {
     if (!composer || !summary.question) return;
@@ -72,27 +84,38 @@ export function SummaryCard({ item, theme, agentId }: PluginTimelineItemProps<Tu
     <View style={styles.card} accessible={false}>
       <View style={styles.row}>
         <Text style={styles.title}>Turn summary</Text>
-        <Text style={styles.meta} numberOfLines={1} accessibilityLabel={`Turn summary: ${headline(summary)}`}>
-          {headline(summary)}
-        </Text>
+        {verdict ? (
+          <View style={{ marginLeft: "auto" }}>
+            <Pill theme={theme} label={verdict.label} color={verdict.failed ? theme.colors.statusDanger : theme.colors.statusSuccess} />
+          </View>
+        ) : null}
       </View>
+      <Text style={styles.meta} accessibilityLabel={`Turn summary: ${headline(summary)}`}>
+        {headline(summary)}
+      </Text>
+
+      {verdict?.failed ? checksSection : null}
 
       {summary.filesTracked ? (
         summary.files.length > 0 ? (
           <View style={styles.section}>
+            <Text style={styles.label}>Files</Text>
             {files.map((file) => (
               <FileRow key={file.path} file={file} styles={styles} />
             ))}
             {hidden > 0 || allFiles ? (
-              <Pressable accessibilityRole="button" onPress={() => setAllFiles((value) => !value)}>
-                <Text style={styles.link}>
-                  {allFiles
+              <Toggle
+                theme={theme}
+                open={allFiles}
+                onPress={() => setAllFiles((value) => !value)}
+                label={
+                  allFiles
                     ? summary.moreFiles > 0
                       ? `Show fewer (${summary.moreFiles} more not listed)`
                       : "Show fewer"
-                    : `Show all ${summary.files.length + summary.moreFiles} files`}
-                </Text>
-              </Pressable>
+                    : `Show all ${summary.files.length + summary.moreFiles} files`
+                }
+              />
             ) : null}
           </View>
         ) : (
@@ -102,23 +125,14 @@ export function SummaryCard({ item, theme, agentId }: PluginTimelineItemProps<Tu
         <Text style={styles.meta}>Files not tracked: Mission Control started during this turn.</Text>
       )}
 
-      <View style={styles.section}>
-        <Text style={styles.label}>Checks</Text>
-        {summary.checks.length === 0 ? (
-          <Text style={styles.meta}>No checks run</Text>
-        ) : (
-          summary.checks.map((check, index) => (
-            <CheckRow key={`${index}:${check.command}`} check={check} theme={theme} styles={styles} />
-          ))
-        )}
-      </View>
+      {verdict?.failed ? null : checksSection}
 
       {summary.question ? (
         <View style={styles.section}>
           <Text style={styles.label}>Open question</Text>
           <Text style={styles.question}>{summary.question}</Text>
           <View style={styles.row}>
-            <Button theme={theme} label="Answer the question" onPress={() => void answer()} disabled={!composer} />
+            <Button theme={theme} primary label="Answer the question" onPress={() => void answer()} disabled={!composer} />
           </View>
           {answerError ? <Text style={styles.error}>{answerError}</Text> : null}
         </View>
