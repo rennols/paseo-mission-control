@@ -15,6 +15,7 @@ import { createInbox } from "./server/inbox/inbox";
 import { createSummaryService } from "./server/chat/summary";
 import { createFeed } from "./server/live/feed";
 import { createHostsService } from "./server/live/hosts";
+import { createActivityTracker } from "./server/office/activity";
 import { LOCAL, createRegistry } from "./server/live/registry";
 import { log } from "./server/log";
 import { createNeedsActions } from "./server/needs/actions";
@@ -37,7 +38,10 @@ export default function contribute(server: PluginServerContext) {
     hasOpen: (agentId, kind) => needs.openFor(agentId, kind).length > 0,
   });
   const hosts = createHostsService(registry, log, () => feed.changed());
-  const feed = createFeed(registry, needs, hosts, log, () => settings.timeLimitMinutes);
+  const activity = createActivityTracker(registry, log, () => feed.changed());
+  const feed = createFeed(registry, needs, hosts, log, () => settings.timeLimitMinutes, (row) =>
+    row.watched ? { ...row, ...activity.get(row.id) } : row,
+  );
 
   // Settings: kept in memory, updated on save. Defaults until the first read finishes.
   let settings: WatchdogSettings = DEFAULT_WATCHDOG_SETTINGS;
@@ -142,6 +146,7 @@ export default function contribute(server: PluginServerContext) {
     hosts.start(api);
     watchdog.start(api);
     queue.start(api);
+    activity.start(api);
     log.info("startup", "Mission Control running", { stateDirectory: resolveStateDirectory() });
   });
 
@@ -257,6 +262,7 @@ export default function contribute(server: PluginServerContext) {
     stopSettings();
     stopChatSettings();
     chatListeners.clear();
+    activity.stop();
     feed.stop();
     await hosts.stop();
     await store.flush();

@@ -47,6 +47,9 @@ describe("relativeToCwd", () => {
 
 describe("buildGroups", () => {
   const agent = (id: string, workspaceKey: string, status: AgentRow["status"], parentAgentId: string | null = null): AgentRow => ({
+    now: null,
+    nowKind: null,
+    helpers: [],
     id,
     serverId: "s",
     hostLabel: "vm",

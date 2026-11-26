@@ -3,7 +3,7 @@
  * Changes are coalesced (at most one push per 250 ms), and a snapshot is pushed every 15 s while
  * someone listens so lanes keep moving. The client never polls.
  */
-import type { LiveSnapshot, RowBadge } from "../../shared/live";
+import type { AgentRow, LiveSnapshot, RowBadge } from "../../shared/live";
 import type { PluginLogger } from "../log";
 import type { NeedsStore } from "../needs/needs";
 import type { HostsService } from "./hosts";
@@ -36,6 +36,8 @@ export function createFeed(
   hosts: HostsService,
   log: PluginLogger,
   timeLimitMinutes: () => number = () => 45,
+  /** Adds what the Office tab shows: the live now line and in-agent subagents (this host only). */
+  decorate: (row: AgentRow) => AgentRow = (row) => row,
 ): Feed {
   const live = new Set<Push<LiveSnapshot>>();
   const counts = new Set<Push<{ open: number }>>();
@@ -56,7 +58,7 @@ export function createFeed(
       generatedAt: now,
       self: hosts.self(),
       hosts: hosts.summaries(),
-      agents: registry.rows(hosts.labels(), hosts.serverIdOf, now),
+      agents: registry.rows(hosts.labels(), hosts.serverIdOf, now).map(decorate),
       needs: needs.list(now),
     };
   }
