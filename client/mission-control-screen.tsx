@@ -73,7 +73,7 @@ export function MissionControlScreen(props: PluginScreenProps) {
                 {item.label}
               </Text>
               {item.count === null || (item.key === "live" && item.count === 0) ? null : item.key === "live" ? (
-                <Pill theme={theme} square label={`${item.count} need you`} color={theme.colors.statusWarning} />
+                <Pill theme={theme} square label={layout.compact ? `? ${item.count}` : `${item.count} need you`} color={theme.colors.statusWarning} />
               ) : (
                 <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta, fontVariant: ["tabular-nums"] }}>{item.count}</Text>
               )}
@@ -82,7 +82,7 @@ export function MissionControlScreen(props: PluginScreenProps) {
         })}
       </View>
       <View style={{ flex: 1 }}>
-        {tab === "live" ? <LiveScreen {...props} /> : tab === "office" ? <OfficeScreen {...props} /> : tab === "queue" ? <QueueScreen {...props} onOpenInbox={() => setTab("inbox")} /> : <InboxScreen {...props} />}
+        {tab === "live" ? <LiveScreen {...props} /> : tab === "office" ? <OfficeScreen {...props} onOpenLive={() => setTab("live")} /> : tab === "queue" ? <QueueScreen {...props} onOpenInbox={() => setTab("inbox")} /> : <InboxScreen {...props} />}
       </View>
     </View>
   );
