@@ -3,8 +3,8 @@
  * tab can show what each one is doing right now and which in-agent subagents it handed work to.
  *
  * Uses `paseo.agents.ref(id).timeline.subscribe` (Paseo 0.17.4): live events only, no history.
- * After a reconnect (`subscription_restored`) events may have been missed; the next tool call
- * corrects the now line, and the turn end closes any helper we lost track of.
+ * So when it starts following, and after a reconnect (`subscription_restored`), it also reads the
+ * current turn with `timeline.refetch` to catch up on handoffs it missed.
  *
  * One subscription per working agent. It is released a short while after the agent goes idle,
  * and every subscription is released on stop. Agents on other hosts are not followed: their
@@ -79,6 +79,10 @@ export function createActivityTracker(
       case "turn_canceled":
         dirty = endTurn(activity, at, "canceled");
         break;
+      case "subscription_restored":
+        // Events may have been missed while the feed was down: read the current turn again.
+        backfill(agentId);
+        break;
       case "error":
         log.warn(FEATURE, `Timeline feed for ${agentId} stopped`, event.error);
         follows.delete(agentId);
@@ -97,9 +101,30 @@ export function createActivityTracker(
         void Promise.resolve(subscription.release()).catch((error: unknown) => log.warn(FEATURE, `Could not release the timeline feed for ${agentId}`, error));
       };
       follows.set(agentId, { release, idleSince: null });
+      // The feed is live only. Read the current turn so a desk shows up even when the handoff
+      // happened before we started following (plugin reload, daemon restart, Office opened late).
+      backfill(agentId);
     } catch (error) {
       log.error(FEATURE, `Could not follow ${agentId}`, error);
     }
+  }
+
+  function backfill(agentId: string): void {
+    const paseo = api;
+    if (!paseo) return;
+    void paseo.agents
+      .ref(agentId)
+      .timeline.refetch({ direction: "tail", limit: 1, wholeTurns: true })
+      .then((page) => {
+        const activity = activityOf(agentId);
+        let dirty = false;
+        for (const entry of page.entries) {
+          const at = Date.parse(entry.timestamp);
+          dirty = applyItem(activity, entry.item, Number.isFinite(at) ? at : now()) || dirty;
+        }
+        if (dirty) changed();
+      })
+      .catch((error: unknown) => log.warn(FEATURE, `Could not read the current turn of ${agentId}`, error instanceof Error ? error.message : String(error)));
   }
 
   function unfollow(agentId: string): void {

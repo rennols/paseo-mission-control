@@ -102,12 +102,15 @@ agent, at any depth) and in-agent subagents the provider runs inside it (Claude'
 "Running npm test"), and its state as an icon, a word and a pose: Working, Waiting on you, Stuck,
 Done. A new handoff slides a desk in and puts a "Handed to …" slip on the supervisor's desk for a
 minute. With the system's reduced motion setting on, nothing moves. Finished desks fold into
-"N finished" after 10 minutes. Tapping a desk opens that agent's chat (an in-agent subagent opens its
+"N finished" after 10 minutes. A head count at the top shows how many are waiting on you, stuck,
+working and done. Rooms where nobody is working or waiting fold into one line each under "Quiet
+rooms"; tap one to unfold it. Tapping a desk opens that agent's chat (an in-agent subagent opens its
 supervisor's). Approvals stay in Needs you on the Live tab.
 
 How: the server follows the live timeline of each working agent on this host
 (`agents.ref(id).timeline.subscribe`, one feed per working agent, released a minute after it goes
-idle) and adds the now line and in-agent subagents to the Live snapshot. The client renders that
+idle; on start and after a reconnect it reads the current turn with `timeline.refetch` to catch up)
+and adds the now line and in-agent subagents to the Live snapshot. The client renders that
 snapshot; it never polls.
 
 Limits (Paseo 0.17.4): an in-agent subagent shows its task and state but not its own step-by-step

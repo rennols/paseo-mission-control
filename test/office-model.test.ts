@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HELPER_KEEP_MS, MAX_HELPERS, applyItem, describeNow, emptyActivity, endTurn, helpersOf } from "../server/office/model";
-import { buildRooms } from "../client/office-format";
+import { buildRooms, deskTime, isQuiet, officeCounts, roomMeta } from "../client/office-format";
 import type { AgentRow } from "../shared/live";
 
 const call = (callId: string, status: string, detail: Record<string, unknown>, name = "tool") => ({
@@ -135,5 +135,39 @@ describe("buildRooms", () => {
     ], true);
     expect(rooms.find((room) => room.supervisor.id === "boss")?.desks[0]?.state).toBe("done");
     expect(rooms.map((room) => room.supervisor.id)).toContain("gone");
+  });
+
+  it("folds quiet rooms, counts everyone and words the desk times", () => {
+    const rooms = buildRooms([
+      row("busy", "working", { since: 0 }),
+      row("worker", "waiting", { parentAgentId: "busy", since: 60_000 }),
+      row("quiet", "idle", { since: 0 }),
+      row("old", "idle", { parentAgentId: "quiet", marks: [{ kind: "finished", at: 0 }] }),
+      row("fresh", "idle", { since: 0 }),
+      row("recent", "idle", { parentAgentId: "fresh", marks: [{ kind: "finished", at: 20 * 60_000 }] }),
+    ], false);
+    const now = 21 * 60_000;
+    const byId = (id: string) => rooms.find((room) => room.supervisor.id === id)!;
+    expect(isQuiet(byId("busy"), now)).toBe(false);
+    expect(isQuiet(byId("quiet"), now)).toBe(true); // its engineer finished 21 min ago
+    expect(isQuiet(byId("fresh"), now)).toBe(false); // finished 1 min ago: still on show
+    expect(officeCounts(rooms)).toEqual({ working: 1, waiting: 1, stuck: 0, done: 2 });
+    expect(rooms[0]?.supervisor.id).toBe("busy");
+    expect(deskTime(byId("busy").desks[0]!, now)).toBe("for 20m");
+    expect(deskTime(byId("fresh").desks[0]!, now)).toBe("1m ago");
+  });
+
+  it("puts desks that need you first", () => {
+    const [room] = buildRooms([
+      row("boss", "working"),
+      row("a", "working", { parentAgentId: "boss", since: 1 }),
+      row("b", "stuck", { parentAgentId: "boss", since: 2 }),
+    ], false);
+    expect(room?.desks.map((desk) => desk.title)).toEqual(["b", "a"]);
+  });
+
+  it("drops the branch from the room subtitle when it repeats the room name", () => {
+    expect(roomMeta(row("x", "idle", { workspaceName: "master", branch: "master" }))).toBe("neuro");
+    expect(roomMeta(row("x", "idle", { workspaceName: "repo", branch: "feat/q", watched: false }))).toBe("neuro · feat/q · read only");
   });
 });

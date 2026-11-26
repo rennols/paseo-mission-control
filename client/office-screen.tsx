@@ -14,7 +14,20 @@ import { ScrollView } from "@getpaseo/plugin/client/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, Animated, Easing, Pressable, Text, View } from "react-native";
 import { liveWatch, type LiveSnapshot } from "../shared/live";
-import { DESK_STATE, buildRooms, isFolded, roomSummary, type Desk, type DeskState, type Room } from "./office-format";
+import {
+  DESK_STATE,
+  buildRooms,
+  deskTime,
+  isFinished,
+  isFolded,
+  isQuiet,
+  officeCounts,
+  roomMeta,
+  roomSummary,
+  type Desk,
+  type DeskState,
+  type Room,
+} from "./office-format";
 import { EmptyNote, FONT, MONO, ScreenState, Toggle, formatElapsed, pagePadding, tint } from "./parts";
 
 /** A handoff counts as new for this long: the slip shows on the supervisor's desk. */
@@ -29,8 +42,6 @@ function stateColor(theme: PluginTheme, state: DeskState): string {
     case "stuck":
     case "error":
       return theme.colors.statusDanger;
-    case "done":
-      return theme.colors.statusSuccess;
     default:
       return theme.colors.foregroundMuted;
   }
@@ -126,14 +137,15 @@ function Scene({ theme, state, motion, small }: { theme: PluginTheme; state: Des
   );
 }
 
-function StateLine({ theme, state }: { theme: PluginTheme; state: DeskState }) {
+function StateLine({ theme, state, time }: { theme: PluginTheme; state: DeskState; time?: string | null }) {
   const { icon, label } = DESK_STATE[state];
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
       <View style={{ minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, borderWidth: 1, borderColor: stateColor(theme, state), alignItems: "center", justifyContent: "center" }}>
         <Text style={{ color: stateColor(theme, state), fontSize: 11, fontWeight: "700", fontFamily: MONO, lineHeight: 14 }}>{icon}</Text>
       </View>
       <Text style={{ color: theme.colors.foreground, fontSize: FONT.meta, fontWeight: "600" }}>{label}</Text>
+      {time ? <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta, fontVariant: ["tabular-nums"] }}>{time}</Text> : null}
     </View>
   );
 }
@@ -151,6 +163,9 @@ function Arrival({ fresh, motion, children }: { fresh: boolean; motion: boolean;
     </Animated.View>
   );
 }
+
+
+const KIND_TAG = { color: undefined as string | undefined, fontSize: 10, fontWeight: "700" as const, letterSpacing: 0.6 };
 
 function DeskCard({
   theme,
@@ -170,13 +185,17 @@ function DeskCard({
   onOpen: (() => void) | null;
 }) {
   const inAgent = desk.kind === "in-agent";
+  const finished = isFinished(desk);
   const justArrived = now - desk.startedAt < HANDOFF_MS && desk.state === "working";
+  const asking = desk.state === "waiting" || desk.state === "stuck" || desk.state === "error";
+  const time = deskTime(desk, now);
   const label = [
     inAgent ? `In-agent subagent ${desk.title}` : `Subagent ${desk.title}`,
     DESK_STATE[desk.state].label,
+    time,
     desk.ask ? `asked: ${desk.ask}` : null,
     desk.now ? `now: ${desk.now}` : null,
-    desk.reportsTo ? `reports to ${desk.reportsTo}` : null,
+    desk.reportsTo ? `works for ${desk.reportsTo}` : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -188,33 +207,42 @@ function DeskCard({
         accessibilityHint={onOpen ? (inAgent ? "Opens the supervisor's chat" : "Opens the agent's chat") : undefined}
         onPress={onOpen ?? undefined}
         disabled={!onOpen}
-        style={({ pressed }) => ({
-          gap: 5,
-          padding: 8,
-          minHeight: 150,
+        style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({
+          gap: 6,
+          padding: compact ? 8 : 10,
           borderRadius: 8,
-          borderWidth: 1,
-          borderStyle: inAgent ? "dashed" : "solid",
-          borderColor: desk.state === "waiting" || desk.state === "stuck" ? stateColor(theme, desk.state) : theme.colors.border,
-          backgroundColor: pressed ? tint(theme.colors.foreground, 0.05) : theme.colors.surface1,
+          borderWidth: asking ? 1.5 : 1,
+          borderStyle: inAgent && !asking ? "dashed" : "solid",
+          borderColor: asking ? stateColor(theme, desk.state) : theme.colors.border,
+          backgroundColor: pressed
+            ? tint(theme.colors.foreground, 0.07)
+            : hovered
+              ? tint(theme.colors.foreground, 0.04)
+              : asking
+                ? tint(stateColor(theme, desk.state), 0.06)
+                : theme.colors.surface1,
+          opacity: finished ? 0.72 : 1,
         })}
       >
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <Scene theme={theme} state={desk.state} motion={motion} small={compact} />
-          {justArrived ? (
-            <Text style={{ color: theme.colors.accent, fontSize: 10, fontWeight: "700", letterSpacing: 0.5 }}>NEW</Text>
-          ) : null}
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 6 }}>
+          <Scene theme={theme} state={desk.state} motion={motion} small />
+          <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end", gap: 2 }}>
+            {justArrived ? (
+              <View style={{ paddingHorizontal: 5, borderRadius: 4, backgroundColor: tint(theme.colors.accent, 0.16) }}>
+                <Text style={{ ...KIND_TAG, color: theme.colors.foreground }}>NEW</Text>
+              </View>
+            ) : null}
+            <Text style={{ ...KIND_TAG, color: theme.colors.foregroundMuted }} numberOfLines={1}>
+              {inAgent ? "IN-AGENT" : "SUBAGENT"}
+            </Text>
+          </View>
         </View>
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontWeight: "600", letterSpacing: 0.5 }} numberOfLines={1}>
-          {inAgent ? "IN-AGENT" : "SUBAGENT"}
-          {desk.reportsTo ? ` · FOR ${desk.reportsTo.toUpperCase()}` : ""}
-        </Text>
-        <Text style={{ color: theme.colors.foreground, fontSize: FONT.body, fontWeight: "600" }} numberOfLines={2}>
+        <Text style={{ color: theme.colors.foreground, fontSize: FONT.body, fontWeight: "600" }} numberOfLines={1}>
           {desk.title}
         </Text>
-        <StateLine theme={theme} state={desk.state} />
+        <StateLine theme={theme} state={desk.state} time={time} />
         {desk.ask ? (
-          <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta }} numberOfLines={2}>
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta, lineHeight: 16 }} numberOfLines={2}>
             Asked: <Text style={{ color: theme.colors.foreground }}>{desk.ask}</Text>
           </Text>
         ) : null}
@@ -223,8 +251,99 @@ function DeskCard({
             {desk.now}
           </Text>
         ) : null}
+        {desk.reportsTo ? (
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }} numberOfLines={1}>
+            ↳ works for {desk.reportsTo}
+          </Text>
+        ) : null}
+        {desk.state === "waiting" ? (
+          <Text style={{ color: theme.colors.foreground, fontSize: 11, fontWeight: "600" }} numberOfLines={1}>
+            Answer in Needs you
+          </Text>
+        ) : null}
       </Pressable>
     </Arrival>
+  );
+}
+
+/** The supervisor's own desk, at the head of the room. */
+function SupervisorDesk({
+  theme,
+  room,
+  now,
+  motion,
+  onOpen,
+}: {
+  theme: PluginTheme;
+  room: Room;
+  now: number;
+  motion: boolean;
+  onOpen: (() => void) | null;
+}) {
+  const { supervisor } = room;
+  const asking = room.supervisorState === "waiting" || room.supervisorState === "stuck" || room.supervisorState === "error";
+  const handoff = room.desks
+    .filter((desk) => now - desk.startedAt < HANDOFF_MS && desk.state === "working" && desk.reportsTo === null)
+    .sort((a, b) => b.startedAt - a.startedAt)[0];
+  return (
+    <Pressable
+      accessibilityRole={onOpen ? "button" : undefined}
+      accessibilityLabel={`Supervisor ${supervisor.title}, ${DESK_STATE[room.supervisorState].label}${room.supervisorNow ? `, ${room.supervisorNow}` : ""}. Team: ${roomSummary(room)}.`}
+      accessibilityHint={onOpen ? "Opens the agent's chat" : undefined}
+      onPress={onOpen ?? undefined}
+      disabled={!onOpen}
+      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        padding: 10,
+        borderRadius: 8,
+        borderWidth: asking ? 1.5 : 1,
+        borderColor: asking ? stateColor(theme, room.supervisorState) : theme.colors.border,
+        backgroundColor: pressed
+          ? tint(theme.colors.foreground, 0.07)
+          : hovered
+            ? tint(theme.colors.foreground, 0.04)
+            : asking
+              ? tint(stateColor(theme, room.supervisorState), 0.06)
+              : theme.colors.surface1,
+      })}
+    >
+      <Scene theme={theme} state={room.supervisorState} motion={motion} small={false} />
+      <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+        <Text style={{ ...KIND_TAG, color: theme.colors.foregroundMuted }} numberOfLines={1}>
+          SUPERVISOR · {supervisor.provider.toUpperCase()}
+        </Text>
+        <Text style={{ color: theme.colors.foreground, fontSize: FONT.row, fontWeight: "600" }} numberOfLines={1}>
+          {supervisor.title}
+        </Text>
+        <StateLine theme={theme} state={room.supervisorState} time={formatElapsed(now - supervisor.since)} />
+        {room.supervisorNow ? (
+          <Text style={{ color: theme.colors.foreground, fontSize: 11, fontFamily: MONO }} numberOfLines={1}>
+            {room.supervisorNow}
+          </Text>
+        ) : null}
+        {handoff ? (
+          <View
+            style={{
+              alignSelf: "flex-start",
+              maxWidth: "100%",
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+              borderRadius: 4,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              backgroundColor: theme.colors.surface0,
+            }}
+          >
+            <Text style={{ color: theme.colors.foreground, fontSize: 11 }} numberOfLines={1}>
+              ✉ Handed to {handoff.title}
+              {handoff.ask ? `: ${handoff.ask}` : ""}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </Pressable>
   );
 }
 
@@ -237,6 +356,7 @@ function RoomView({
   motion,
   openChat,
   showDone,
+  onCollapse,
 }: {
   theme: PluginTheme;
   compact: boolean;
@@ -246,93 +366,135 @@ function RoomView({
   motion: boolean;
   openChat: ((serverId: string, agentId: string) => void) | null;
   showDone: boolean;
+  onCollapse: (() => void) | null;
 }) {
   const { supervisor } = room;
   const folded = room.desks.filter((desk) => isFolded(desk, now));
   const desks = showDone ? room.desks : room.desks.filter((desk) => !isFolded(desk, now));
-  const handoffs = room.desks.filter((desk) => now - desk.startedAt < HANDOFF_MS && desk.state === "working" && desk.reportsTo === null);
-  const latest = handoffs.sort((a, b) => b.startedAt - a.startedAt)[0];
-  const openSupervisor = openChat ? () => openChat(supervisor.serverId, supervisor.id) : null;
-  const summary = roomSummary(room);
+  const meta = roomMeta(supervisor);
   return (
-    <View
-      accessibilityRole="summary"
-      style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, padding: compact ? 8 : 10, gap: 8, backgroundColor: theme.colors.surface0 }}
-    >
-      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", gap: 8 }}>
-        <Text style={{ color: theme.colors.foreground, fontSize: FONT.title, fontWeight: "600", flexShrink: 1 }} numberOfLines={1}>
-          {supervisor.workspaceName}
-        </Text>
-        <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta, fontFamily: MONO, flexShrink: 1 }} numberOfLines={1}>
-          {[supervisor.hostLabel, supervisor.branch].filter(Boolean).join(" · ")}
-          {supervisor.watched ? "" : " · read only"}
-        </Text>
-      </View>
-      <Pressable
-        accessibilityRole={openSupervisor ? "button" : undefined}
-        accessibilityLabel={`Supervisor ${supervisor.title}, ${DESK_STATE[room.supervisorState].label}${room.supervisorNow ? `, ${room.supervisorNow}` : ""}. Team: ${summary}.`}
-        accessibilityHint={openSupervisor ? "Opens the agent's chat" : undefined}
-        onPress={openSupervisor ?? undefined}
-        disabled={!openSupervisor}
-        style={({ pressed }) => ({
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 10,
-          padding: 8,
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: room.supervisorState === "waiting" || room.supervisorState === "stuck" ? stateColor(theme, room.supervisorState) : theme.colors.border,
-          backgroundColor: pressed ? tint(theme.colors.foreground, 0.05) : theme.colors.surface1,
-        })}
-      >
-        <Scene theme={theme} state={room.supervisorState} motion={motion} small={false} />
-        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-          <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontWeight: "600", letterSpacing: 0.5 }}>SUPERVISOR · {supervisor.provider.toUpperCase()}</Text>
-          <Text style={{ color: theme.colors.foreground, fontSize: FONT.row, fontWeight: "600" }} numberOfLines={1}>
-            {supervisor.title}
+    <View style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, padding: compact ? 8 : 12, gap: 10, backgroundColor: theme.colors.surface0 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <View style={{ flex: 1, minWidth: 0, flexDirection: "row", flexWrap: "wrap", alignItems: "baseline", columnGap: 8 }}>
+          <Text accessibilityRole="header" style={{ color: theme.colors.foreground, fontSize: FONT.title, fontWeight: "600", flexShrink: 1 }} numberOfLines={1}>
+            {supervisor.workspaceName}
           </Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-            <StateLine theme={theme} state={room.supervisorState} />
-            <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta, fontVariant: ["tabular-nums"] }}>{formatElapsed(now - supervisor.since)}</Text>
-          </View>
-          {room.supervisorNow ? (
-            <Text style={{ color: theme.colors.foreground, fontSize: 11, fontFamily: MONO }} numberOfLines={1}>
-              {room.supervisorNow}
+          {meta ? (
+            <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta, flexShrink: 1 }} numberOfLines={1}>
+              {meta}
             </Text>
           ) : null}
-          {latest ? (
-            <View style={{ alignSelf: "flex-start", maxWidth: "100%", flexDirection: "row", gap: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: theme.colors.accent, backgroundColor: tint(theme.colors.accent, 0.08) }}>
-              <Text style={{ color: theme.colors.foreground, fontSize: 11, flexShrink: 1 }} numberOfLines={1}>
-                ✉ Handed to {latest.title}
-                {latest.ask ? `: ${latest.ask}` : ""}
-              </Text>
-            </View>
-          ) : null}
         </View>
-      </Pressable>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta }}>Team: {summary}</Text>
-      {desks.length > 0 ? (
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {desks.map((desk) => (
-            <View key={desk.key} style={compact ? { flexBasis: "47%", flexGrow: 1, minWidth: 0 } : { width: 188 }}>
-              <DeskCard
-                theme={theme}
-                compact={compact}
-                desk={desk}
-                now={now}
-                fresh={seen !== null && !seen.has(desk.key)}
-                motion={motion}
-                onOpen={openChat && desk.open ? () => openChat(desk.open!.serverId, desk.open!.agentId) : null}
-              />
-            </View>
-          ))}
-        </View>
-      ) : null}
-      {folded.length > 0 && !showDone ? (
+        {onCollapse ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`Fold ${supervisor.title}'s room`} onPress={onCollapse} hitSlop={8} style={{ paddingHorizontal: 6, minHeight: 28, justifyContent: "center" }}>
+            <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta }}>Fold ▴</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      <SupervisorDesk theme={theme} room={room} now={now} motion={motion} onOpen={openChat ? () => openChat(supervisor.serverId, supervisor.id) : null} />
+      {/* The team hangs off the supervisor's desk like an org chart: a spine on the left. */}
+      <View style={{ marginLeft: compact ? 14 : 30, paddingLeft: compact ? 10 : 14, borderLeftWidth: 2, borderLeftColor: theme.colors.border, gap: 8 }}>
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta }}>
-          ✓ {folded.length} finished {folded.length === 1 ? "engineer has" : "engineers have"} left their desk
+          {room.desks.length === 0 ? "No handoffs yet. This supervisor is working alone." : `Team · ${roomSummary(room)}`}
         </Text>
-      ) : null}
+        {desks.length > 0 ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {desks.map((desk) => (
+              <View key={desk.key} style={compact ? { flexBasis: "46%", flexGrow: 1, minWidth: 0 } : { width: 208 }}>
+                <DeskCard
+                  theme={theme}
+                  compact={compact}
+                  desk={desk}
+                  now={now}
+                  fresh={seen !== null && !seen.has(desk.key)}
+                  motion={motion}
+                  onOpen={openChat && desk.open ? () => openChat(desk.open!.serverId, desk.open!.agentId) : null}
+                />
+              </View>
+            ))}
+          </View>
+        ) : null}
+        {folded.length > 0 && !showDone ? (
+          <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta }}>
+            ✓ {folded.length} finished {folded.length === 1 ? "engineer" : "engineers"} left
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+/** A quiet room folded into one line. Tap to unfold. */
+function QuietRow({ theme, room, now, onPress }: { theme: PluginTheme; room: Room; now: number; onPress: () => void }) {
+  const { supervisor } = room;
+  const { icon, label } = DESK_STATE[room.supervisorState];
+  const done = room.desks.filter((desk) => isFinished(desk)).length;
+  const detail = [label, formatElapsed(now - supervisor.since), done ? `${done} done` : null].filter(Boolean).join(" · ");
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${supervisor.title}, ${supervisor.workspaceName}, ${detail}`}
+      accessibilityHint="Unfolds the room"
+      onPress={onPress}
+      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        minHeight: 44,
+        paddingHorizontal: 10,
+        borderRadius: 8,
+        backgroundColor: pressed ? tint(theme.colors.foreground, 0.07) : hovered ? tint(theme.colors.foreground, 0.04) : "transparent",
+      })}
+    >
+      <Text style={{ width: 16, textAlign: "center", color: theme.colors.foregroundMuted, fontFamily: MONO, fontSize: FONT.meta }}>{icon}</Text>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ color: theme.colors.foreground, fontSize: FONT.body, fontWeight: "500" }} numberOfLines={1}>
+          {supervisor.title}
+        </Text>
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta }} numberOfLines={1}>
+          {supervisor.workspaceName} · {detail}
+        </Text>
+      </View>
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta }}>▾</Text>
+    </Pressable>
+  );
+}
+
+/** Office head count: icon, number and word for each state, so it reads without colour. */
+function HeadCount({ theme, rooms, compact }: { theme: PluginTheme; rooms: readonly Room[]; compact: boolean }) {
+  const counts = officeCounts(rooms);
+  const items: { state: DeskState; count: number; word: string }[] = [
+    { state: "waiting", count: counts.waiting, word: compact ? "waiting" : "waiting on you" },
+    { state: "stuck", count: counts.stuck, word: "stuck" },
+    { state: "working", count: counts.working, word: "working" },
+    { state: "done", count: counts.done, word: "done" },
+  ];
+  return (
+    <View accessibilityRole="summary" style={{ flexDirection: "row", flexWrap: "wrap", gap: compact ? 6 : 8 }}>
+      {items.map(({ state, count, word }) => {
+        const zero = count === 0;
+        return (
+          <View
+            key={state}
+            accessible
+            accessibilityLabel={`${count} ${state === "waiting" ? "waiting on you" : word}`}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingHorizontal: compact ? 8 : 10,
+              paddingVertical: 4,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: !zero && (state === "waiting" || state === "stuck") ? stateColor(theme, state) : theme.colors.border,
+            }}
+          >
+            <Text style={{ color: zero ? theme.colors.foregroundMuted : stateColor(theme, state), fontFamily: MONO, fontSize: FONT.meta, fontWeight: "700" }}>{DESK_STATE[state].icon}</Text>
+            <Text style={{ color: zero ? theme.colors.foregroundMuted : theme.colors.foreground, fontSize: FONT.row, fontWeight: "600", fontVariant: ["tabular-nums"] }}>{count}</Text>
+            <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.body }}>{word}</Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -341,6 +503,7 @@ export function OfficeScreen({ theme, layout, navigation, host }: PluginScreenPr
   const [snapshot, setSnapshot] = useState<LiveSnapshot | null>(null);
   const [showClosed, setShowClosed] = useState(false);
   const [showDone, setShowDone] = useState(false);
+  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(new Set());
   const subscription = useSubscription(liveWatch, {}, setSnapshot);
   const compact = layout.compact;
   const reduced = useReducedMotion();
@@ -362,29 +525,70 @@ export function OfficeScreen({ theme, layout, navigation, host }: PluginScreenPr
   }
   const now = snapshot.generatedAt;
   const closedCount = snapshot.agents.filter((agent) => agent.status === "closed").length;
-  const anyFinished = rooms.some((room) => room.desks.some((desk) => isFolded(desk, now)));
+  const anyFolded = rooms.some((room) => room.desks.some((desk) => isFolded(desk, now)));
   const openChat = navigation ? (serverId: string, agentId: string) => navigation.openAgent({ agentId, serverId }) : null;
+  const toggle = (key: string) => {
+    const next = new Set(unfolded);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setUnfolded(next);
+  };
+  const busy = rooms.filter((room) => !isQuiet(room, now) || unfolded.has(room.key));
+  const quiet = rooms.filter((room) => isQuiet(room, now) && !unfolded.has(room.key));
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.colors.surface0 }} contentContainerStyle={{ padding: pagePadding(compact), gap: 12 }}>
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta, lineHeight: 17 }}>
-        Each agent you start is a supervisor. The agents and in-agent subagents it hands work to sit at desks in its room. Tap a desk to open its chat. Approvals stay in Needs you on the Live tab.
-      </Text>
-      {rooms.length === 0 ? (
-        <EmptyNote theme={theme}>No agents yet. Agents you start in Paseo get a room here.</EmptyNote>
-      ) : (
-        rooms.map((room) => (
-          <RoomView key={room.key} theme={theme} compact={compact} room={room} now={now} seen={seen} motion={motion} openChat={openChat} showDone={showDone} />
-        ))
-      )}
-      <View style={{ gap: 6 }}>
-        {anyFinished ? (
-          <Toggle theme={theme} open={showDone} onPress={() => setShowDone(!showDone)} label={showDone ? "Hide finished engineers" : "Show finished engineers"} />
-        ) : null}
-        {closedCount > 0 ? (
-          <Toggle theme={theme} open={showClosed} onPress={() => setShowClosed(!showClosed)} label={showClosed ? "Hide closed agents" : `Show closed agents · ${closedCount}`} />
-        ) : null}
+    <ScrollView style={{ flex: 1, backgroundColor: theme.colors.surface0 }} contentContainerStyle={{ padding: pagePadding(compact), gap: 14 }}>
+      <View style={{ gap: 8 }}>
+        <HeadCount theme={theme} rooms={rooms} compact={compact} />
+        <Text style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta, lineHeight: 17 }}>
+          Supervisors hand work to the engineers at their desks. Tap anyone to open their chat.
+        </Text>
       </View>
+      {rooms.length === 0 ? (
+        <View style={{ alignItems: "center", gap: 10, paddingVertical: 28 }}>
+          <Scene theme={theme} state="closed" motion={false} small={false} />
+          <EmptyNote theme={theme}>The office is empty. Start an agent in Paseo and it gets a room here.</EmptyNote>
+        </View>
+      ) : null}
+      {busy.length === 0 && quiet.length > 0 ? (
+        <EmptyNote theme={theme}>✓ Nobody is working or waiting on you right now.</EmptyNote>
+      ) : null}
+      {busy.map((room) => (
+        <RoomView
+          key={room.key}
+          theme={theme}
+          compact={compact}
+          room={room}
+          now={now}
+          seen={seen}
+          motion={motion}
+          openChat={openChat}
+          showDone={showDone}
+          onCollapse={unfolded.has(room.key) ? () => toggle(room.key) : null}
+        />
+      ))}
+      {quiet.length > 0 ? (
+        <View style={{ gap: 2 }}>
+          <Text accessibilityRole="header" style={{ color: theme.colors.foregroundMuted, fontSize: FONT.meta, fontWeight: "600", letterSpacing: 0.4, paddingHorizontal: 2, paddingBottom: 4 }}>
+            QUIET ROOMS · {quiet.length}
+          </Text>
+          <View style={{ borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, padding: 2 }}>
+            {quiet.map((room) => (
+              <QuietRow key={room.key} theme={theme} room={room} now={now} onPress={() => toggle(room.key)} />
+            ))}
+          </View>
+        </View>
+      ) : null}
+      {anyFolded || closedCount > 0 ? (
+        <View style={{ gap: 6 }}>
+          {anyFolded ? (
+            <Toggle theme={theme} open={showDone} onPress={() => setShowDone(!showDone)} label={showDone ? "Hide finished engineers" : "Show finished engineers"} />
+          ) : null}
+          {closedCount > 0 ? (
+            <Toggle theme={theme} open={showClosed} onPress={() => setShowClosed(!showClosed)} label={showClosed ? "Hide closed agents" : `Show closed agents · ${closedCount}`} />
+          ) : null}
+        </View>
+      ) : null}
     </ScrollView>
   );
 }

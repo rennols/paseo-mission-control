@@ -137,6 +137,8 @@ export function buildRooms(agents: readonly AgentRow[], showClosed: boolean): Ro
       }),
     ];
     desks.push(...helpers);
+    // Desks that need you first; otherwise keep the handoff order (a stable sort).
+    desks.sort((a, b) => URGENCY[a.state] - URGENCY[b.state]);
     return { key: key(root), supervisor: root, supervisorState: agentState(root, false), supervisorNow: nowLine(root), desks };
   });
 
@@ -155,4 +157,61 @@ export function roomSummary(room: Room): string {
     .sort((a, b) => URGENCY[a[0]] - URGENCY[b[0]])
     .map(([state, count]) => `${count} ${DESK_STATE[state].label.toLowerCase()}`)
     .join(" · ");
+}
+
+/** Supervisor and desks that need you or are busy. */
+function isActive(state: DeskState): boolean {
+  return URGENCY[state] <= URGENCY.working;
+}
+
+/**
+ * A quiet room: the supervisor isn't busy or asking, and no desk is busy, asking or just finished.
+ * Quiet rooms fold into one line each, so the busy ones stay on screen.
+ */
+export function isQuiet(room: Room, now: number): boolean {
+  if (isActive(room.supervisorState)) return false;
+  return room.desks.every((desk) => !isActive(desk.state) && (!isFinished(desk) || isFolded(desk, now)));
+}
+
+export interface OfficeCounts {
+  working: number;
+  waiting: number;
+  stuck: number;
+  done: number;
+}
+
+/** Everyone in the office, supervisors and desks, by state. Stuck includes errors. */
+export function officeCounts(rooms: readonly Room[]): OfficeCounts {
+  const counts: OfficeCounts = { working: 0, waiting: 0, stuck: 0, done: 0 };
+  const add = (state: DeskState) => {
+    if (state === "working") counts.working += 1;
+    else if (state === "waiting") counts.waiting += 1;
+    else if (state === "stuck" || state === "error") counts.stuck += 1;
+    else if (state === "done") counts.done += 1;
+  };
+  for (const room of rooms) {
+    add(room.supervisorState);
+    room.desks.forEach((desk) => add(desk.state));
+  }
+  return counts;
+}
+
+function minutes(ms: number): string {
+  const m = Math.max(0, Math.floor(ms / 60_000));
+  if (m < 1) return "<1m";
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+/** "for 4m" while busy, "finished 3m ago" once done, else null. */
+export function deskTime(desk: Desk, now: number): string | null {
+  if (isFinished(desk) || desk.state === "error") return desk.endedAt !== null ? `${minutes(now - desk.endedAt)} ago` : null;
+  if (isActive(desk.state)) return `for ${minutes(now - desk.startedAt)}`;
+  return null;
+}
+
+/** Room subtitle: host, plus the branch when it says something the room name doesn't. */
+export function roomMeta(supervisor: AgentRow): string {
+  const branch = supervisor.branch && supervisor.branch !== supervisor.workspaceName ? supervisor.branch : null;
+  return [supervisor.hostLabel, branch, supervisor.watched ? null : "read only"].filter(Boolean).join(" · ");
 }
