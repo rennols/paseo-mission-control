@@ -124,7 +124,14 @@ describe("buildRooms", () => {
     const [boss] = rooms;
     expect(boss?.desks.map((desk) => desk.key)).toEqual(["s1:worker", "s1:grandchild", "helper:s1:boss:t1"]);
     expect(boss?.desks[1]).toMatchObject({ reportsTo: "worker" });
-    expect(boss?.desks[2]).toMatchObject({ kind: "in-agent", state: "working" });
+    expect(boss?.desks[2]).toMatchObject({ kind: "in-agent", state: "working", title: "Find callers", role: "Explore" });
+    expect(boss?.desks[0]).toMatchObject({ kind: "subagent", title: "worker", role: null });
+  });
+
+  it("names an in-agent desk by its type when it has no task", () => {
+    const helper = { id: "t2", type: "Explore", ask: null, status: "done" as const, lastAction: null, startedAt: 1, endedAt: 2 };
+    const [room] = buildRooms([row("boss", "idle", { helpers: [helper] })], false);
+    expect(room?.desks[0]).toMatchObject({ title: "Explore", role: "Explore", state: "done" });
   });
 
   it("shows a finished Paseo subagent as done, and closed rooms only when asked", () => {

@@ -25,7 +25,10 @@ export const DESK_STATE: Record<DeskState, { icon: string; label: string }> = {
 export interface Desk {
   key: string;
   kind: "subagent" | "in-agent";
+  /** What reads as the desk's name: the agent's title, or for an in-agent subagent its task. */
   title: string;
+  /** The provider's subagent type for in-agent desks ("Explore"), else null. */
+  role: string | null;
   /** What the supervisor asked for. */
   ask: string | null;
   state: DeskState;
@@ -81,7 +84,9 @@ function helperDesks(row: AgentRow, reportsTo: string | null): Desk[] {
   return row.helpers.map((helper) => ({
     key: `helper:${row.serverId}:${row.id}:${helper.id}`,
     kind: "in-agent" as const,
-    title: helper.type,
+    // Several helpers often share a type ("Explore"); the task tells them apart.
+    title: helper.ask ?? helper.type,
+    role: helper.type,
     ask: helper.ask,
     state: helperState(helper),
     now: helper.lastAction,
@@ -116,6 +121,7 @@ export function buildRooms(agents: readonly AgentRow[], showClosed: boolean): Ro
           key: key(child),
           kind: "subagent",
           title: child.title,
+          role: null,
           ask: null,
           state: agentState(child, true),
           now: nowLine(child),

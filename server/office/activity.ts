@@ -47,6 +47,8 @@ export function createActivityTracker(
 ): ActivityTracker {
   const activities = new Map<string, Activity>();
   const follows = new Map<string, Follow>();
+  /** Agents whose turns we have read, live or by backfill. Each idle one is read once. */
+  const known = new Set<string>();
   let api: PaseoApi | null = null;
   let offRegistry: (() => void) | null = null;
   let timer: NodeJS.Timeout | null = null;
@@ -101,6 +103,7 @@ export function createActivityTracker(
         void Promise.resolve(subscription.release()).catch((error: unknown) => log.warn(FEATURE, `Could not release the timeline feed for ${agentId}`, error));
       };
       follows.set(agentId, { release, idleSince: null });
+      known.add(agentId);
       // The feed is live only. Read the current turn so a desk shows up even when the handoff
       // happened before we started following (plugin reload, daemon restart, Office opened late).
       backfill(agentId);
@@ -109,7 +112,11 @@ export function createActivityTracker(
     }
   }
 
-  function backfill(agentId: string): void {
+  /**
+   * Reads the agent's latest turn. For an agent that is idle (`settled`), the turn is over: its
+   * now line is cleared again, so only the desks it handed work to remain, as finished.
+   */
+  function backfill(agentId: string, settled = false): void {
     const paseo = api;
     if (!paseo) return;
     void paseo.agents
@@ -118,9 +125,16 @@ export function createActivityTracker(
       .then((page) => {
         const activity = activityOf(agentId);
         let dirty = false;
+        let last = 0;
         for (const entry of page.entries) {
-          const at = Date.parse(entry.timestamp);
-          dirty = applyItem(activity, entry.item, Number.isFinite(at) ? at : now()) || dirty;
+          const parsed = Date.parse(entry.timestamp);
+          const at = Number.isFinite(parsed) ? parsed : now();
+          last = Math.max(last, at);
+          dirty = applyItem(activity, entry.item, at) || dirty;
+        }
+        if (settled && last > 0) {
+          endTurn(activity, last, "completed");
+          dirty = helpersOf(activity, now()).length > 0 || dirty;
         }
         if (dirty) changed();
       })
@@ -146,8 +160,14 @@ export function createActivityTracker(
       } else if (followed) {
         followed.idleSince ??= at;
         if (at - followed.idleSince > RELEASE_AFTER_MS || entry.lifecycle === "closed") unfollow(entry.id);
+      } else if (entry.lifecycle === "idle" && !known.has(entry.id)) {
+        // An agent that went idle before we started (plugin reload, daemon restart): read its
+        // last turn once, so the helpers it just finished with stay in its room for a while.
+        known.add(entry.id);
+        backfill(entry.id, true);
       }
     }
+    for (const agentId of [...known]) if (!entries.has(agentId)) known.delete(agentId);
     for (const agentId of [...follows.keys()]) if (!entries.has(agentId)) unfollow(agentId);
     for (const agentId of [...activities.keys()]) if (!entries.has(agentId)) activities.delete(agentId);
   }
@@ -188,6 +208,7 @@ export function createActivityTracker(
       timer = null;
       for (const agentId of [...follows.keys()]) unfollow(agentId);
       activities.clear();
+      known.clear();
       api = null;
     },
   };
