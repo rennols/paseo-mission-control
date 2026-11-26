@@ -4,7 +4,8 @@ A Paseo plugin for supervising many coding agents in parallel across hosts. Plug
 
 Status: P0 in progress. Built: Live tab, Needs you, watchdog, sidebar footer entry, settings screen,
 turn summary card and quick reply pills. P1: task queue, review inbox, saved prompts (`/p`),
-branch row badges, and test and edit cards. Added outside the PRD's first list: collision radar.
+branch row badges, and test and edit cards. Added outside the PRD's first list: collision radar and
+the Office tab.
 
 Compact explore rows are not built as a plugin feature: Paseo 0.17.4 already folds runs of tool calls
 into one expandable row (Settings → Chat → Chat display: "Collapse tool calls" or "Collapse turns").
@@ -25,6 +26,7 @@ with plugin rows would break Paseo's own folding.
 | `server/queue/` | Daemon subprocess | Task queue, slot rules, dispatcher, unattended stop, Add task catalog. |
 | `server/report/` | Daemon subprocess | Overnight report: window and per-run rules, built from stored state only. |
 | `server/inbox/` | Daemon subprocess | Review inbox: read-only git review, commit/push/`gh pr create` on click. |
+| `server/office/` | Daemon subprocess | Office tab: follows working agents' live timelines for the now line and in-agent subagents. |
 | `server/radar/` | Daemon subprocess | Collision radar: compares agents' turn snapshots per repo, read-only git. |
 | `server/chat/` | Daemon subprocess | Turn summaries: git snapshots per turn, checks read from the agent's own commands. |
 | `server/state/store.ts` | Daemon subprocess | `$PASEO_HOME/mission-control/state.json`, temp file then rename. |
@@ -90,6 +92,27 @@ A settings change applies to rows rendered after it; reopen a chat to redo the r
 an open Needs you card: approve, question, stuck, over 45m (the watchdog's time limit) or overlap, with a count
 when several agents share one. Rows with nothing open get no badge. Hide them from the sidebar's Show
 menu ("Mission Control: Needs you"). Badges cover this host only, like Needs you.
+
+## Office tab
+
+A visual view of who is working on what. Each top-level agent is a **supervisor** with a room. The
+agents it hands work to sit at **desks** in that room: Paseo subagents (agents started by another
+agent, at any depth) and in-agent subagents the provider runs inside it (Claude's Task tool, tagged
+"In-agent"). Each desk shows what it was asked, what it is doing right now ("Read part5.ts",
+"Running npm test"), and its state as an icon, a word and a pose: Working, Waiting on you, Stuck,
+Done. A new handoff slides a desk in and puts a "Handed to …" slip on the supervisor's desk for a
+minute. With the system's reduced motion setting on, nothing moves. Finished desks fold into
+"N finished" after 10 minutes. Tapping a desk opens that agent's chat (an in-agent subagent opens its
+supervisor's). Approvals stay in Needs you on the Live tab.
+
+How: the server follows the live timeline of each working agent on this host
+(`agents.ref(id).timeline.subscribe`, one feed per working agent, released a minute after it goes
+idle) and adds the now line and in-agent subagents to the Live snapshot. The client renders that
+snapshot; it never polls.
+
+Limits (Paseo 0.17.4): an in-agent subagent shows its task and state but not its own step-by-step
+actions, because Paseo sends those on a separate channel plugins can't read. Agents on other hosts
+get rooms and desks from their directory, but their now line only updates when a turn ends.
 
 ## Collision radar
 

@@ -1,7 +1,7 @@
 /**
- * The Mission Control screen: three tabs, Live, Queue and Review inbox (PRD: Mission Control
- * screen). The tab labels carry the queued and ready-for-review counts the server pushes on
- * `work.count.watch`. Open on a tab with the screen param `tab` ("live", "queue" or "inbox").
+ * The Mission Control screen: four tabs, Live, Office, Queue and Review inbox (PRD: Mission
+ * Control screen; Office added 2026-11-26). The tab labels carry the queued and ready-for-review counts the server pushes on
+ * `work.count.watch`. Open on a tab with the screen param `tab` ("live", "office", "queue" or "inbox").
  */
 import { useSubscription, type PluginScreenProps } from "@getpaseo/plugin/client";
 import { useState } from "react";
@@ -10,14 +10,15 @@ import { needsCountWatch } from "../shared/live";
 import { workCountWatch } from "../shared/queue";
 import { InboxScreen } from "./inbox-screen";
 import { LiveScreen } from "./live-screen";
+import { OfficeScreen } from "./office-screen";
 import { FONT, Pill, tint } from "./parts";
 import { QueueScreen } from "./queue-screen";
 
-type Tab = "live" | "queue" | "inbox";
+type Tab = "live" | "office" | "queue" | "inbox";
 
 export function MissionControlScreen(props: PluginScreenProps) {
   const { theme, layout, params } = props;
-  const initial: Tab = params.tab === "queue" || params.tab === "inbox" ? params.tab : "live";
+  const initial: Tab = params.tab === "office" || params.tab === "queue" || params.tab === "inbox" ? params.tab : "live";
   const [tab, setTab] = useState<Tab>(initial);
   const [counts, setCounts] = useState<{ queued: number; review: number } | null>(null);
   useSubscription(workCountWatch, {}, setCounts);
@@ -28,6 +29,7 @@ export function MissionControlScreen(props: PluginScreenProps) {
   // the Queue or Review tab too), Queue the waiting tasks, Review inbox the worktrees to review.
   const tabs: { key: Tab; label: string; count: number | null; spoken: string }[] = [
     { key: "live", label: "Live", count: needsOpen, spoken: "need you" },
+    { key: "office", label: "Office", count: null, spoken: "" },
     { key: "queue", label: "Queue", count: counts ? counts.queued : null, spoken: "queued" },
     // "Review" on a phone, so the three tabs and the need-you badge fit one line at 360 px.
     { key: "inbox", label: layout.compact ? "Review" : "Review inbox", count: counts ? counts.review : null, spoken: "to review" },
@@ -80,7 +82,7 @@ export function MissionControlScreen(props: PluginScreenProps) {
         })}
       </View>
       <View style={{ flex: 1 }}>
-        {tab === "live" ? <LiveScreen {...props} /> : tab === "queue" ? <QueueScreen {...props} onOpenInbox={() => setTab("inbox")} /> : <InboxScreen {...props} />}
+        {tab === "live" ? <LiveScreen {...props} /> : tab === "office" ? <OfficeScreen {...props} /> : tab === "queue" ? <QueueScreen {...props} onOpenInbox={() => setTab("inbox")} /> : <InboxScreen {...props} />}
       </View>
     </View>
   );

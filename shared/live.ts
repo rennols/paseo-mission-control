@@ -32,6 +32,29 @@ export const LaneMarkSchema = z.object({
 });
 export type LaneMark = z.output<typeof LaneMarkSchema>;
 
+/** What an agent is doing right now, from its live timeline (Office tab). */
+export const NowKindSchema = z.enum(["read", "edit", "run", "search", "fetch", "think", "delegate", "write", "other"]);
+export type NowKind = z.output<typeof NowKindSchema>;
+
+/**
+ * An in-agent subagent: one the provider runs inside the agent (Claude's Task tool), seen as a
+ * `sub_agent` tool call in the parent's timeline. Paseo subagents are full agents (rows with a
+ * parentAgentId) and don't appear here.
+ */
+export const HelperSchema = z.object({
+  id: z.string(),
+  /** The subagent type the provider reports, e.g. "Explore". */
+  type: z.string(),
+  /** What the parent asked it to do. */
+  ask: z.string().nullable(),
+  status: z.enum(["working", "done", "failed", "stopped"]),
+  /** Its latest action, e.g. "Read dispatch.ts". */
+  lastAction: z.string().nullable(),
+  startedAt: z.number(),
+  endedAt: z.number().nullable(),
+});
+export type Helper = z.output<typeof HelperSchema>;
+
 export const AgentRowSchema = z.object({
   id: z.string(),
   serverId: z.string(),
@@ -52,6 +75,11 @@ export const AgentRowSchema = z.object({
   marks: z.array(LaneMarkSchema),
   /** The lane in words, for screen readers. */
   laneDescription: z.string(),
+  /** Live "now" line while working, from the timeline feed. This host only; null elsewhere. */
+  now: z.string().nullable(),
+  nowKind: NowKindSchema.nullable(),
+  /** In-agent subagents, newest first. This host only. */
+  helpers: z.array(HelperSchema),
   /** False for agents read from another host: hooks, the watchdog and Needs you don't cover them. */
   watched: z.boolean(),
 });
